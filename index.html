@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Payslip Payment Breakdown</title>
+  <!-- Load Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Load Inter font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --base: #1e1e2e;
+      --mantle: #181825;
+      --crust: #11111b;
+      --text: #cdd6f4;
+      --subtext: #bac2de;
+      --surface0: #313244;
+      --surface1: #45475a;
+      --surface2: #585b70;
+      --green: #a6e3a1;
+      --blue: #89b4fa;
+      --yellow: #f9e2af;
+      --red: #f38ba8;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--base);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    header {
+      background-color: var(--mantle);
+      padding: 2rem 1rem;
+      text-align: center;
+      border-bottom: 1px solid var(--surface1);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+
+    header h1 {
+      font-family: 'Inter', sans-serif;
+      font-size: 2rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .file-label {
+      display: inline-block;
+      margin-top: 1.5rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      background-color: var(--surface1);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      user-select: none;
+    }
+    .file-label:hover {
+      background-color: var(--surface2);
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .chart-container {
+      max-width: 1000px;
+      margin: 2.5rem auto;
+      background-color: var(--mantle);
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 400px !important;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Payslip Payment Breakdown</h1>
+    <label for="jsonUpload" class="file-label">Select JSON File</label>
+    <input type="file" id="jsonUpload" accept="application/json" />
+  </header>
+  <div class="chart-container">
+    <canvas id="paymentChart"></canvas>
+  </div>
+
+  <script>
+    // Get CSS variable colors
+    const rootStyle = getComputedStyle(document.documentElement);
+    const themeColors = {
+      text: rootStyle.getPropertyValue('--text').trim(),
+      subtext: rootStyle.getPropertyValue('--subtext').trim(),
+      surface0: rootStyle.getPropertyValue('--surface0').trim(),
+      green: rootStyle.getPropertyValue('--green').trim(),
+      blue: rootStyle.getPropertyValue('--blue').trim(),
+      yellow: rootStyle.getPropertyValue('--yellow').trim(),
+      red: rootStyle.getPropertyValue('--red').trim(),
+    };
+
+    // Configure Chart.js defaults
+    Chart.defaults.font.family = 'Inter, sans-serif';
+    Chart.defaults.color = themeColors.text;
+
+    document.getElementById('jsonUpload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = JSON.parse(evt.target.result);
+        const slips = data.Payslips;
+        const labels = slips.map(s => s['Payslip Information']['Check Date']);
+
+        const rawEarnings = slips.map(s => s['Earnings']
+          .map(e => e.Amount || 0).reduce((a, b) => a + b, 0)
+        );
+        const benefitsData = slips.map(s => (s['Employer Paid Benefits'] || [])
+          .map(b => b.Amount || 0).reduce((a, b) => a + b, 0)
+        );
+
+        const taxesData = slips.map(s => s['Employee Taxes']
+          .map(t => (t.Amount || 0)).reduce((a, b) => a + b, 0)
+        );
+        const preDeductions = slips.map(s => (s['Pre Tax Deductions'] || [])
+          .map(d => (d.Amount || 0)).reduce((a, b) => a + b, 0)
+        );
+        const postDeductions = slips.map(s => (s['Post Tax Deductions'] || [])
+          .map(d => (d.Amount || 0)).reduce((a, b) => a + b, 0)
+        );
+        const deductionsData = preDeductions.map((v, i) => v + postDeductions[i]);
+
+        if (window.paymentChart instanceof Chart) {
+          window.paymentChart.destroy();
+        }
+
+        const ctx = document.getElementById('paymentChart');
+        window.paymentChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              { label: 'Take Home Pay', backgroundColor: themeColors.green, data: rawEarnings.map((v, i) => v - deductionsData[i] - taxesData[i] + Math.min(benefitsData[i], 0)), stack: 'stack1' },
+              { label: 'Employer Paid Benefits', backgroundColor: themeColors.blue, data: benefitsData.map((v, i) => Math.max(v, 0)), stack: 'stack1' },
+              { label: 'Deductions', backgroundColor: themeColors.yellow, data: deductionsData.map((v, i) => Math.max(v, 0)), stack: 'stack1' },
+              { label: 'Taxes', backgroundColor: themeColors.red, data: taxesData.map((v, i) => Math.max(v, 0)), stack: 'stack1' },
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: {
+                stacked: true,
+                title: { display: true, text: 'Check Date', color: themeColors.subtext },
+                ticks: { color: themeColors.text, maxRotation: 45, minRotation: 45 },
+                grid: { color: themeColors.surface0 },
+              },
+              y: {
+                stacked: true,
+                title: { display: true, text: 'Amount (USD)', color: themeColors.subtext },
+                ticks: { color: themeColors.text, callback: v => '$' + v.toLocaleString() },
+                grid: { color: themeColors.surface0 },
+              }
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    const label = ctx.dataset.label;
+                    const val = ctx.parsed.y;
+                    const total = ctx.chart.data.datasets.reduce((sum, ds) => sum + (ds.data[ctx.dataIndex] || 0), 0);
+                    const pct = ((val / total) * 100).toFixed(1);
+                    return `${label}: $${val.toLocaleString()} (${pct}% of $${total.toFixed(2).toLocaleString()})`;
+                  }
+                }
+              },
+              legend: {
+                labels: { color: themeColors.text },
+                position: 'bottom',
+              }
+            }
+          }
+        });
+      };
+      reader.readAsText(file);
+    });
+  </script>
+</body>
+</html>
