@@ -1,6 +1,8 @@
 # Workday Payslip Parser
 
-Parse Excel payslips from Workday into a single table in CSV format.
+This script parses Excel payslips from Workday into a single table in CSV
+format. Payslips can be exported from Workday from each Payslip page by
+clicking on the "Export to Excel" icon in the top right corner.
 
 ## Usage
 
@@ -22,4 +24,4 @@ uv run main.py -i <input_directory> -o <output_file.csv>
 |------------------------|-----------------------------------------------------------|-------------------|
 | `-i`, `--input-dir`    | Directory containing `.xlsx` payslip files                | Current dir (`.`) |
 | `-o`, `--output-file`  | Output CSV file path                                      | `output.csv`      |
-| `-q`, `--quiet`        | Do not print to console while parsing                     | False             |
+| `-q`, `--quiet`        | Do not print to console while running                     | False             |
