@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 from io import TextIOWrapper
 from openpyxl.worksheet.worksheet import Worksheet
 from typing import Any
+from enum import Enum
 
 
 class PayslipSection:
@@ -29,7 +30,13 @@ class PayslipSection:
     }
 
 
-def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'json'):
+class OutputFormat(Enum):
+    JSON = 'json'
+    CSV = 'csv'
+
+
+def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict,
+                           fmt: OutputFormat = OutputFormat.JSON):
     """
     Parses a single-row style table from the worksheet.
 
@@ -44,14 +51,14 @@ def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict, fmt: str
         ws (Worksheet): The worksheet to parse.
         start_row (Any): The row index where the table starts.
         output (dict): Dictionary to store parsed key-value pairs.
-        fmt (str): Parsing output format (either json or csv).
+        fmt (OutputFormat): Parsing output format (either json or csv).
     """
     key_prefix = ws.cell(start_row, 1).value
     label_row = start_row + 1
     data_row = start_row + 2
     col = 1
 
-    if fmt == 'json':
+    if fmt == OutputFormat.JSON:
         output[key_prefix] = {}
 
     while ws.cell(label_row, col).value is not None:
@@ -59,14 +66,16 @@ def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict, fmt: str
         val = ws.cell(data_row, col).value
         col += 1
 
-        if fmt == 'json':
+        if fmt == OutputFormat.JSON:
             output[key_prefix][key_suffix] = val
         else:
             key = f'{key_prefix} - {key_suffix}'
             output[key] = val
 
 
-def parse_table_grid(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'json'):
+def parse_table_grid(ws: Worksheet, start_row: Any, output: dict,
+                     fmt: OutputFormat = OutputFormat.JSON):
+
     """
     Parses a grid-style table from the worksheet.
 
@@ -82,13 +91,13 @@ def parse_table_grid(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'js
         ws (Worksheet): The worksheet to parse.
         start_row (Any): The row index where the table starts.
         output (dict): Dictionary to store parsed key-value pairs.
-        fmt (str): Parsing output format (either json or csv).
+        fmt (OutputFormat): Parsing output format (either json or csv).
     """
     key_prefix = ws.cell(start_row, 1).value
     label_row = start_row + 1
     data_row = start_row + 2
 
-    if fmt == 'json':
+    if fmt == OutputFormat.JSON:
         output[key_prefix] = []
 
     last_row = ws.max_row
@@ -96,7 +105,7 @@ def parse_table_grid(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'js
         col = 2
         key_suffix_1 = ws.cell(data_row, 1).value
 
-        if fmt == 'json':
+        if fmt == OutputFormat.JSON:
             output[key_prefix].append({})
 
         while ws.cell(label_row, col).value is not None:
@@ -104,7 +113,7 @@ def parse_table_grid(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'js
             val = ws.cell(data_row, col).value
             col += 1
 
-            if fmt == 'json':
+            if fmt == OutputFormat.JSON:
                 output[key_prefix][-1]['Description'] = key_suffix_1
                 output[key_prefix][-1][key_suffix_2] = val
             else:
@@ -113,13 +122,13 @@ def parse_table_grid(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'js
         data_row += 1
 
 
-def parse_payslip(fmt: str, filename: str) -> dict:
+def parse_payslip(fmt: OutputFormat, filename: str) -> dict:
     """
     Parses a payslip Excel file and extracts relevant information
     based on section headers.
 
     Args:
-        fmt (str): Format of the output file (either json or csv).
+        fmt (OutputFormat): Format of the output file (either json or csv).
         filename (str): Path to the Excel (.xlsx) file.
 
     Returns:
@@ -156,7 +165,7 @@ def convert_to_csv_file(dir: str, out: TextIOWrapper, quiet: bool = False):
             full_path = os.path.join(dir, filename)
             if not quiet:
                 print(f'Parsing {filename}...')
-            row = parse_payslip('csv', full_path)
+            row = parse_payslip(OutputFormat.CSV, full_path)
             rows.append(row)
             keys.extend(row.keys())
 
@@ -190,7 +199,7 @@ def convert_to_json_file(dir: str, out: TextIOWrapper, quiet: bool = False):
             full_path = os.path.join(dir, filename)
             if not quiet:
                 print(f'Parsing {filename}...')
-            row = parse_payslip('json', full_path)
+            row = parse_payslip(OutputFormat.JSON, full_path)
             objs.append(row)
 
     # Sort objects by date
@@ -219,7 +228,9 @@ def main():
         help='Output CSV file name (default: output)'
     )
     parser.add_argument(
-        '-f', '--format', type=str, choices=['csv', 'json'], default='json',
+        '-f', '--format', type=str,
+        choices=[e.value for e in OutputFormat],
+        default=str(OutputFormat.JSON.value),
         help='Output format (default: json)'
     )
     parser.add_argument(
@@ -235,11 +246,11 @@ def main():
         message="Workbook contains no default style, apply openpyxl's default"
     )
 
-    match args.format:
-        case 'json':
+    match OutputFormat(args.format):
+        case OutputFormat.JSON:
             with open(args.output_file + '.json', 'w', newline='') as f:
                 convert_to_json_file(args.input_dir, f, quiet=args.quiet)
-        case 'csv':
+        case OutputFormat.CSV:
             with open(args.output_file + '.csv', 'w', newline='') as f:
                 convert_to_csv_file(args.input_dir, f, quiet=args.quiet)
 
