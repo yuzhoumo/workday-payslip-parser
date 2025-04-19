@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Payslip Payment Breakdown</title>
+  <title>Payslip Data Breakdown</title>
   <!-- Load Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Load Inter font -->
@@ -91,12 +91,21 @@
 </head>
 <body>
   <header>
-    <h1>Payslip Payment Breakdown</h1>
+    <h1>Payslip Data Breakdown</h1>
     <label for="jsonUpload" class="file-label">Select JSON File</label>
-    <input type="file" id="jsonUpload" accept="application/json" />
+    <input type="file" id="jsonUpload" accept="application/json" /><br><br>
+    <p>(This tool runs locally in your browser. No data is uploaded.)</p>
   </header>
   <div class="chart-container">
     <canvas id="paymentChart"></canvas>
+  </div>
+
+  <div class="breakdown-container" style="max-width:1000px; margin:2rem auto; color: var(--text);">
+    <label for="yearSelect" style="font-weight:500; margin-right:0.5rem;">Select Year:</label>
+    <select id="yearSelect" style="padding:0.5rem; border: none; border-radius:4px; background:var(--surface1); color:var(--text);">
+      <!-- options injected by JS -->
+    </select>
+    <div id="breakdownDetails" style="margin-top:1.5rem;"></div>
   </div>
 
   <script>
@@ -195,6 +204,153 @@
             }
           }
         });
+
+        // 1) extract all years from your slips
+        const years = Array.from(new Set(
+          slips.map(s => {
+            // assumes Check Date is MM/DD/YYYY
+            const parts = s['Payslip Information']['Check Date'].split('/');
+            return parts[2];
+          })
+        )).sort();
+
+        // 2) populate the dropdown
+        const yearSelect = document.getElementById('yearSelect');
+
+        // create and append the “All Time” option
+        const optAll = document.createElement('option');
+        optAll.value = 'all';
+        optAll.textContent = 'All Time';
+        yearSelect.appendChild(optAll);
+
+        years.forEach(y => {
+          const opt = document.createElement('option');
+          opt.value = y;
+          opt.textContent = y;
+          yearSelect.appendChild(opt);
+        });
+
+        // 3) helper to compute aggregates per section
+        function computeAggregates(slipsForYear) {
+          const sections = {
+            'Earnings': s => s['Earnings'] || [],
+            'Employer Paid Benefits': s => s['Employer Paid Benefits'] || [],
+            'Employee Taxes': s => s['Employee Taxes'] || [],
+            'Pre Tax Deductions': s => s['Pre Tax Deductions'] || [],
+            'Post Tax Deductions': s => s['Post Tax Deductions'] || []
+          };
+
+          const result = {};
+
+          // assume slipsForYear is already in chronological order by Check Date
+          slipsForYear.sort((a, b) => new Date(a['Payslip Information']['Check Date']) - new Date(b['Payslip Information']['Check Date']));
+
+          for (const [secName, getter] of Object.entries(sections)) {
+            // temp store: { [description]: { sum: Number, lastYtd: Number|null } }
+            const temp = {};
+
+            slipsForYear.forEach(slip => {
+              const items = getter(slip);
+              items.forEach(item => {
+                const desc = item.Description;
+                const amt  = item.Amount  != null ? +item.Amount  : null;
+                const ytd  = item.YTD     != null ? +item.YTD     : null;
+
+                if (!temp[desc]) {
+                  temp[desc] = { sum: 0, lastYtd: null };
+                }
+
+                if (amt != null) {
+                  temp[desc].sum += amt;
+                }
+                if (ytd != null) {
+                  // always overwrite—later slips replace earlier
+                  temp[desc].lastYtd = ytd;
+                }
+              });
+            });
+
+            // build final map: prefer sum if >0, else fallback to lastYtd
+            const finalMap = {};
+            Object.entries(temp).forEach(([desc, { sum, lastYtd }]) => {
+              const value = (sum > 0)
+                ? sum
+                : (lastYtd != null ? lastYtd : 0);
+              finalMap[desc] = value;
+            });
+
+            result[secName] = finalMap;
+          }
+
+          return result;
+        }
+
+        // 4) render the breakdown into the page
+        function renderBreakdown(aggregates) {
+          const container = document.getElementById('breakdownDetails');
+          container.innerHTML = '';  // clear previous
+          for (const [secName, aggMap] of Object.entries(aggregates)) {
+            // section title
+            const h3 = document.createElement('h3');
+            h3.textContent = secName;
+            h3.style.marginTop = '1rem';
+            container.appendChild(h3);
+
+            // if no items, show placeholder
+            if (Object.keys(aggMap).length === 0) {
+              const p = document.createElement('p');
+              p.textContent = 'No data for this section.';
+              container.appendChild(p);
+              continue;
+            }
+
+            // build a table
+            const table = document.createElement('table');
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+            table.innerHTML = `
+              <thead>
+                <tr>
+                  <th style="text-align:left; border-bottom:1px solid var(--surface2); padding:4px;">Description</th>
+                  <th style="text-align:right; border-bottom:1px solid var(--surface2); padding:4px;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${Object.entries(aggMap)
+                  .map(([desc, total]) =>
+                    `<tr>
+                       <td style="padding:4px;">${desc}</td>
+                       <td style="padding:4px; text-align:right;">$${total.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                     </tr>`
+                  ).join('')}
+              </tbody>
+            `;
+            container.appendChild(table);
+          }
+        }
+
+        // 5) wire dropdown to re‑compute on change
+        function updateForYear(year) {
+          let slipsForYear;
+          if (year === 'all') {
+            // use every slip
+            slipsForYear = slips;
+          } else {
+            // filter by Check Date ending in "/YYYY"
+            slipsForYear = slips.filter(s =>
+              s['Payslip Information']['Check Date'].endsWith('/' + year)
+            );
+          }
+
+          // now compute and render exactly as before
+          const aggs = computeAggregates(slipsForYear);
+          renderBreakdown(aggs);
+        }
+
+        // initialize to all time
+        yearSelect.addEventListener('change', () => updateForYear(yearSelect.value));
+        yearSelect.value = 'all';
+        updateForYear('all');
       };
       reader.readAsText(file);
     });
