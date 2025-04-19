@@ -1,3 +1,7 @@
+# Input/output files
+*.csv
+*.xlsx
+
 # Python-generated files
 __pycache__/
 *.py[oc]
