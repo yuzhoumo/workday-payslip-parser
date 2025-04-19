@@ -1,6 +1,7 @@
 import os
 import csv
 import argparse
+import warnings
 from openpyxl import load_workbook
 
 from io import TextIOWrapper
@@ -143,7 +144,7 @@ def main():
     Entry point of the script. Parses CLI arguments and runs the conversion.
     """
     parser = argparse.ArgumentParser(
-        description='Convert payslip Excel files to a single CSV file.'
+        description='Convert Workday payslip Excel files to a single CSV file.'
     )
     parser.add_argument(
         '-i', '--input-dir', type=str, default='.',
@@ -159,6 +160,12 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # ignore only the “no default style” warning from openpyxl
+    warnings.filterwarnings(
+        "ignore",
+        message="Workbook contains no default style, apply openpyxl's default"
+    )
 
     with open(args.output_file, 'w', newline='') as f:
         convert_to_csv_file(args.input_dir, f, verbose=args.verbose)
