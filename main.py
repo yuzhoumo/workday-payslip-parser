@@ -183,22 +183,23 @@ def convert_to_json_file(dir: str, out: TextIOWrapper, quiet: bool = False):
         out (TextIOWrapper): Output file handle to write the CSV data.
         quiet (bool): Whether to print progress messages.
     """
-    rows = []
+    objs = []
     for filename in os.listdir(dir):
         if filename.endswith('.xlsx'):
             full_path = os.path.join(dir, filename)
             if not quiet:
                 print(f'Parsing {filename}...')
             row = parse_payslip('json', full_path)
-            rows.append(row)
+            objs.append(row)
 
-    # Sort rows by date
+    # Sort objects by date
     date_fmt, default = '%m/%d/%Y', '1/1/0001'
-    header = 'Payslip Information - Check Date'
-    sort_key = lambda r: datetime.strptime(r.get(header, default), date_fmt).date()
-    rows.sort(key=sort_key)
+    sort_key = lambda r: datetime.strptime(
+        r['Payslip Information'].get('Check Date', default), date_fmt,
+    ).date()
+    objs.sort(key=sort_key)
 
-    out.write(json.dumps(rows, indent=2))
+    out.write(json.dumps({ 'Payslips': objs }, indent=2))
 
 
 def main():
