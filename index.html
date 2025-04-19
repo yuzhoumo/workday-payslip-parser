@@ -162,10 +162,30 @@
           data: {
             labels,
             datasets: [
-              { label: 'Take Home Pay', backgroundColor: themeColors.green, data: rawEarnings.map((v, i) => v - deductionsData[i] - taxesData[i] + Math.min(benefitsData[i], 0)), stack: 'stack1' },
-              { label: 'Employer Paid Benefits', backgroundColor: themeColors.blue, data: benefitsData.map((v, i) => Math.max(v, 0)), stack: 'stack1' },
-              { label: 'Deductions', backgroundColor: themeColors.yellow, data: deductionsData.map((v, i) => Math.max(v, 0)), stack: 'stack1' },
-              { label: 'Taxes', backgroundColor: themeColors.red, data: taxesData.map((v, i) => Math.max(v, 0)), stack: 'stack1' },
+              {
+                label: 'Take Home Pay',
+                backgroundColor: themeColors.green,
+                data: rawEarnings.map((v, i) => v - deductionsData[i] - taxesData[i] + Math.min(benefitsData[i], 0)),
+                stack: 'stack1'
+              },
+              {
+                label: 'Employer Paid Benefits',
+                backgroundColor: themeColors.blue,
+                data: benefitsData.map((v, i) => Math.max(v, 0)),
+                stack: 'stack1'
+              },
+              {
+                label: 'Deductions',
+                backgroundColor: themeColors.yellow,
+                data: deductionsData.map((v, i) => Math.max(v, 0)),
+                stack: 'stack1'
+              },
+              {
+                label: 'Taxes',
+                backgroundColor: themeColors.red,
+                data: taxesData.map((v, i) => Math.max(v, 0)),
+                stack: 'stack1'
+              }
             ]
           },
           options: {
@@ -188,14 +208,55 @@
             plugins: {
               tooltip: {
                 callbacks: {
+                  // preserve your existing label callback
                   label: function(ctx) {
                     const label = ctx.dataset.label;
-                    const val = ctx.parsed.y;
-                    const total = ctx.chart.data.datasets.reduce((sum, ds) => sum + (ds.data[ctx.dataIndex] || 0), 0);
-                    const pct = ((val / total) * 100).toFixed(1);
-                    return `${label}: $${val.toLocaleString()} (${pct}% of $${total.toFixed(2).toLocaleString()})`;
+                    const val   = ctx.parsed.y;
+                    const total = ctx.chart.data.datasets
+                                      .reduce((sum, ds) => sum + (ds.data[ctx.dataIndex]||0), 0);
+                    const pct   = ((val/total)*100).toFixed(1);
+                    return `${label}: $${val.toLocaleString()} (${pct}% of $${total.toLocaleString()})`;
+                  },
+                  // **new** footer callback to show breakdown
+                  footer: function(tooltipItems) {
+                    const idx   = tooltipItems[0].dataIndex;
+                    const label = tooltipItems[0].dataset.label;
+                    let items   = [];
+
+                    // pick the right array off the slip
+                    const slip = slips[idx];
+                    if (label === 'Take Home Pay') {
+                      items = slip['Earnings'] || [];
+                    } else if (label === 'Employer Paid Benefits') {
+                      items = slip['Employer Paid Benefits'] || [];
+                    } else if (label === 'Deductions') {
+                      items = [
+                        ...(slip['Pre Tax Deductions']  || []),
+                        ...(slip['Post Tax Deductions'] || [])
+                      ];
+                    } else if (label === 'Taxes') {
+                      items = slip['Employee Taxes'] || [];
+                    }
+
+                    if (!items.length) {
+                      return []; // no footer
+                    }
+
+                    // build lines: first “Breakdown:”, then each desc
+                    const lines = ['Breakdown:'];
+                    items.forEach(item => {
+                      const amt = item.Amount != null
+                        ? item.Amount
+                        : (item.YTD != null ? item.YTD : 0);
+                      lines.push(
+                        `${item.Description}: $${amt.toLocaleString(undefined,{minimumFractionDigits:2})}`
+                      );
+                    });
+                    return lines;
                   }
-                }
+                },
+                // make sure footer is shown
+                footerFontStyle: 'normal'
               },
               legend: {
                 labels: { color: themeColors.text },
