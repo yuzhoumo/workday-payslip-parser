@@ -2,6 +2,7 @@ import os
 import csv
 import argparse
 import warnings
+from datetime import datetime
 from openpyxl import load_workbook
 
 from io import TextIOWrapper
@@ -132,6 +133,15 @@ def convert_to_csv_file(dir: str, out: TextIOWrapper, quiet: bool = False):
             row = parse_payslip(full_path)
             rows.append(row)
             keys.extend(row.keys())
+
+    # Ensure unique keys and maintain order
+    keys = list(dict.fromkeys(keys))
+
+    # Sort rows by date
+    fmt, default = '%m/%d/%Y', '1/1/0001'
+    header = 'Payslip Information - Pay Period Begin'
+    sort_key = lambda r: datetime.strptime(r.get(header, default), fmt).date()
+    rows.sort(key=sort_key)
 
     writer = csv.DictWriter(out, fieldnames=keys)
     writer.writeheader()
