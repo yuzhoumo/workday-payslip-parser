@@ -91,7 +91,8 @@ def parse_table_grid(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'js
     if fmt == 'json':
         output[key_prefix] = []
 
-    while ws.cell(data_row, 1).value not in PayslipSection.SECTIONS and data_row < ws.max_row:
+    last_row = ws.max_row
+    while ws.cell(data_row, 1).value not in PayslipSection.SECTIONS and data_row <= last_row:
         col = 2
         key_suffix_1 = ws.cell(data_row, 1).value
 
