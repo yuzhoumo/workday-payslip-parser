@@ -114,20 +114,20 @@ def parse_payslip(filename: str) -> dict:
     return payslip_data
 
 
-def convert_to_csv_file(dir: str, out: TextIOWrapper, verbose: bool = False):
+def convert_to_csv_file(dir: str, out: TextIOWrapper, quiet: bool = False):
     """
     Converts all .xlsx payslip files in the given directory to a CSV file.
 
     Args:
         dir (str): Path to the directory containing Excel files.
         out (TextIOWrapper): Output file handle to write the CSV data.
-        verbose (bool): Whether to print progress messages.
+        quiet (bool): Whether to print progress messages.
     """
     keys, rows = [], []
     for filename in os.listdir(dir):
         if filename.endswith('.xlsx'):
             full_path = os.path.join(dir, filename)
-            if verbose:
+            if not quiet:
                 print(f'Parsing {filename}...')
             row = parse_payslip(full_path)
             rows.append(row)
@@ -155,8 +155,8 @@ def main():
         help='Output CSV file path (default: output.csv)'
     )
     parser.add_argument(
-        '-v', '--verbose', action='store_true',
-        help='Enable verbose output'
+        '-q', '--quiet', action='store_true',
+        help='Do not print logs while parsing'
     )
 
     args = parser.parse_args()
@@ -168,7 +168,7 @@ def main():
     )
 
     with open(args.output_file, 'w', newline='') as f:
-        convert_to_csv_file(args.input_dir, f, verbose=args.verbose)
+        convert_to_csv_file(args.input_dir, f, quiet=args.quiet)
 
 
 if __name__ == '__main__':
