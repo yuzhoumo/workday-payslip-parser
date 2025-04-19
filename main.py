@@ -131,7 +131,7 @@ def parse_payslip(fmt: str, filename: str) -> dict:
 
     payslip_data = {}
     for cell in ws['A']:
-        match PayslipSection.SECTIONS[cell.value]:
+        match PayslipSection.SECTIONS.get(cell.value):
             case PayslipSection.SINGLE:
                 parse_table_single_row(ws, cell.row, payslip_data, fmt)
             case PayslipSection.GRID:
