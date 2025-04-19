@@ -11,6 +11,24 @@ from openpyxl.worksheet.worksheet import Worksheet
 from typing import Any
 
 
+class PayslipSection:
+    SINGLE = 'SINGLE'
+    GRID = 'GRID'
+    SECTIONS = {
+        'Company Information': SINGLE,
+        'Payslip Information': SINGLE,
+        'Current and YTD Totals': GRID,
+        'Earnings': GRID,
+        'Employee Taxes': GRID,
+        'Pre Tax Deductions': GRID,
+        'Post Tax Deductions': GRID,
+        'Employer Paid Benefits': GRID,
+        'Taxable Wages': GRID,
+        'Withholding': GRID,
+        'Payment Information': GRID,
+    }
+
+
 def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'json'):
     """
     Parses a single-row style table from the worksheet.
@@ -73,7 +91,7 @@ def parse_table_grid(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'js
     if fmt == 'json':
         output[key_prefix] = []
 
-    while ws.cell(data_row, 2).value is not None:
+    while ws.cell(data_row, 1).value not in PayslipSection.SECTIONS and data_row < ws.max_row:
         col = 2
         key_suffix_1 = ws.cell(data_row, 1).value
 
@@ -113,28 +131,10 @@ def parse_payslip(fmt: str, filename: str) -> dict:
 
     payslip_data = {}
     for cell in ws['A']:
-        match cell.value:
-            case 'Company Information':
+        match PayslipSection.SECTIONS[cell.value]:
+            case PayslipSection.SINGLE:
                 parse_table_single_row(ws, cell.row, payslip_data, fmt)
-            case 'Payslip Information':
-                parse_table_single_row(ws, cell.row, payslip_data, fmt)
-            case 'Current and YTD Totals':
-                parse_table_grid(ws, cell.row, payslip_data, fmt)
-            case 'Earnings':
-                parse_table_grid(ws, cell.row, payslip_data, fmt)
-            case 'Employee Taxes':
-                parse_table_grid(ws, cell.row, payslip_data, fmt)
-            case 'Pre Tax Deductions':
-                parse_table_grid(ws, cell.row, payslip_data, fmt)
-            case 'Post Tax Deductions':
-                parse_table_grid(ws, cell.row, payslip_data, fmt)
-            case 'Employer Paid Benefits':
-                parse_table_grid(ws, cell.row, payslip_data, fmt)
-            case 'Taxable Wages':
-                parse_table_grid(ws, cell.row, payslip_data, fmt)
-            case 'Withholding':
-                parse_table_grid(ws, cell.row, payslip_data, fmt)
-            case 'Payment Information':
+            case PayslipSection.GRID:
                 parse_table_grid(ws, cell.row, payslip_data, fmt)
 
     return payslip_data
