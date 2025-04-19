@@ -24,22 +24,12 @@ wheels = [
 ]
 
 [[package]]
-name = "payslips"
+name = "workday-payslip-to-csv"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "openpyxl" },
-    { name = "pdftotext" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "openpyxl", specifier = ">=3.1.5" },
-    { name = "pdftotext", specifier = ">=3.0.0" },
-]
-
-[[package]]
-name = "pdftotext"
-version = "3.0.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f0/99/b6c910344eb95f3dddf8e27cddcdebb51765174b0624632db4cd62d3f172/pdftotext-3.0.0.tar.gz", hash = "sha256:c3652b19154e145515a8bfa953fc6136338ed92337bdccbb53fe0d88013b1aaa", size = 113565 }
+requires-dist = [{ name = "openpyxl", specifier = ">=3.1.5" }]
