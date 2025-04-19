@@ -1,5 +1,6 @@
 import os
 import csv
+import json
 import argparse
 import warnings
 from datetime import datetime
@@ -10,7 +11,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from typing import Any
 
 
-def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict):
+def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'json'):
     """
     Parses a single-row style table from the worksheet.
 
@@ -25,20 +26,29 @@ def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict):
         ws (Worksheet): The worksheet to parse.
         start_row (Any): The row index where the table starts.
         output (dict): Dictionary to store parsed key-value pairs.
+        fmt (str): Parsing output format (either json or csv).
     """
     key_prefix = ws.cell(start_row, 1).value
     label_row = start_row + 1
     data_row = start_row + 2
     col = 1
+
+    if fmt == 'json':
+        output[key_prefix] = {}
+
     while ws.cell(label_row, col).value is not None:
         key_suffix = ws.cell(label_row, col).value
-        key = f'{key_prefix} - {key_suffix}'
         val = ws.cell(data_row, col).value
-        output[key] = val
         col += 1
 
+        if fmt == 'json':
+            output[key_prefix][key_suffix] = val
+        else:
+            key = f'{key_prefix} - {key_suffix}'
+            output[key] = val
 
-def parse_table_grid(ws: Worksheet, start_row: Any, output: dict):
+
+def parse_table_grid(ws: Worksheet, start_row: Any, output: dict, fmt: str = 'json'):
     """
     Parses a grid-style table from the worksheet.
 
@@ -54,28 +64,43 @@ def parse_table_grid(ws: Worksheet, start_row: Any, output: dict):
         ws (Worksheet): The worksheet to parse.
         start_row (Any): The row index where the table starts.
         output (dict): Dictionary to store parsed key-value pairs.
+        fmt (str): Parsing output format (either json or csv).
     """
     key_prefix = ws.cell(start_row, 1).value
     label_row = start_row + 1
     data_row = start_row + 2
+
+    if fmt == 'json':
+        output[key_prefix] = []
+
     while ws.cell(data_row, 2).value is not None:
         col = 2
         key_suffix_1 = ws.cell(data_row, 1).value
+
+        if fmt == 'json':
+            output[key_prefix].append({})
+
         while ws.cell(label_row, col).value is not None:
             key_suffix_2 = ws.cell(label_row, col).value
             val = ws.cell(data_row, col).value
-            key = f'{key_prefix} - {key_suffix_1} - {key_suffix_2}'
-            output[key] = val
             col += 1
+
+            if fmt == 'json':
+                output[key_prefix][-1]['Description'] = key_suffix_1
+                output[key_prefix][-1][key_suffix_2] = val
+            else:
+                key = f'{key_prefix} - {key_suffix_1} - {key_suffix_2}'
+                output[key] = val
         data_row += 1
 
 
-def parse_payslip(filename: str) -> dict:
+def parse_payslip(fmt: str, filename: str) -> dict:
     """
     Parses a payslip Excel file and extracts relevant information
     based on section headers.
 
     Args:
+        fmt (str): Format of the output file (either json or csv).
         filename (str): Path to the Excel (.xlsx) file.
 
     Returns:
@@ -90,27 +115,27 @@ def parse_payslip(filename: str) -> dict:
     for cell in ws['A']:
         match cell.value:
             case 'Company Information':
-                parse_table_single_row(ws, cell.row, payslip_data)
+                parse_table_single_row(ws, cell.row, payslip_data, fmt)
             case 'Payslip Information':
-                parse_table_single_row(ws, cell.row, payslip_data)
+                parse_table_single_row(ws, cell.row, payslip_data, fmt)
             case 'Current and YTD Totals':
-                parse_table_grid(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
             case 'Earnings':
-                parse_table_grid(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
             case 'Employee Taxes':
-                parse_table_grid(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
             case 'Pre Tax Deductions':
-                parse_table_grid(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
             case 'Post Tax Deductions':
-                parse_table_grid(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
             case 'Employer Paid Benefits':
-                parse_table_grid(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
             case 'Taxable Wages':
-                parse_table_grid(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
             case 'Withholding':
-                parse_table_grid(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
             case 'Payment Information':
-                parse_table_single_row(ws, cell.row, payslip_data)
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
 
     return payslip_data
 
@@ -130,7 +155,7 @@ def convert_to_csv_file(dir: str, out: TextIOWrapper, quiet: bool = False):
             full_path = os.path.join(dir, filename)
             if not quiet:
                 print(f'Parsing {filename}...')
-            row = parse_payslip(full_path)
+            row = parse_payslip('csv', full_path)
             rows.append(row)
             keys.extend(row.keys())
 
@@ -138,15 +163,42 @@ def convert_to_csv_file(dir: str, out: TextIOWrapper, quiet: bool = False):
     keys = list(dict.fromkeys(keys))
 
     # Sort rows by date
-    fmt, default = '%m/%d/%Y', '1/1/0001'
-    header = 'Payslip Information - Pay Period Begin'
-    sort_key = lambda r: datetime.strptime(r.get(header, default), fmt).date()
+    date_fmt, default = '%m/%d/%Y', '1/1/0001'
+    header = 'Payslip Information - Check Date'
+    sort_key = lambda r: datetime.strptime(r.get(header, default), date_fmt).date()
     rows.sort(key=sort_key)
 
     writer = csv.DictWriter(out, fieldnames=keys)
     writer.writeheader()
     for row in rows:
         writer.writerow(row)
+
+
+def convert_to_json_file(dir: str, out: TextIOWrapper, quiet: bool = False):
+    """
+    Converts all .xlsx payslip files in the given directory to a CSV file.
+
+    Args:
+        dir (str): Path to the directory containing Excel files.
+        out (TextIOWrapper): Output file handle to write the CSV data.
+        quiet (bool): Whether to print progress messages.
+    """
+    rows = []
+    for filename in os.listdir(dir):
+        if filename.endswith('.xlsx'):
+            full_path = os.path.join(dir, filename)
+            if not quiet:
+                print(f'Parsing {filename}...')
+            row = parse_payslip('json', full_path)
+            rows.append(row)
+
+    # Sort rows by date
+    date_fmt, default = '%m/%d/%Y', '1/1/0001'
+    header = 'Payslip Information - Check Date'
+    sort_key = lambda r: datetime.strptime(r.get(header, default), date_fmt).date()
+    rows.sort(key=sort_key)
+
+    out.write(json.dumps(rows, indent=2))
 
 
 def main():
@@ -161,8 +213,12 @@ def main():
         help='Directory containing .xlsx files (default: current directory)'
     )
     parser.add_argument(
-        '-o', '--output-file', type=str, default='output.csv',
-        help='Output CSV file path (default: output.csv)'
+        '-o', '--output-file', type=str, default='output',
+        help='Output CSV file name (default: output)'
+    )
+    parser.add_argument(
+        '-f', '--format', type=str, choices=['csv', 'json'], default='json',
+        help='Output format (default: json)'
     )
     parser.add_argument(
         '-q', '--quiet', action='store_true',
@@ -177,8 +233,13 @@ def main():
         message="Workbook contains no default style, apply openpyxl's default"
     )
 
-    with open(args.output_file, 'w', newline='') as f:
-        convert_to_csv_file(args.input_dir, f, quiet=args.quiet)
+    match args.format:
+        case 'json':
+            with open(args.output_file + '.json', 'w', newline='') as f:
+                convert_to_json_file(args.input_dir, f, quiet=args.quiet)
+        case 'csv':
+            with open(args.output_file + '.csv', 'w', newline='') as f:
+                convert_to_csv_file(args.input_dir, f, quiet=args.quiet)
 
 
 if __name__ == '__main__':

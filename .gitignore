@@ -1,5 +1,6 @@
 # Input/output files
 *.csv
+*.json
 *.xlsx
 
 # Python-generated files
