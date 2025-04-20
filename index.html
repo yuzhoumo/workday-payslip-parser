@@ -441,6 +441,7 @@
               </thead>
               <tbody>
                 ${Object.entries(aggMap)
+                  .sort((a, b) => b[1] - a[1])
                   .map(([desc, total]) =>
                     `<tr>
                        <td style="padding:4px;">${desc}</td>
