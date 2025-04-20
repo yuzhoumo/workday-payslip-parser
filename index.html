@@ -367,6 +367,10 @@
                   const pct = ((val / total) * 100).toFixed(1);
                   html += `
                     <div class="breakdown-item">
+                      <span style="padding-right:10px"><b>Gross</b></span>
+                      <span>$${total.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                    </div>
+                    <div class="breakdown-item">
                       <span style="padding-right:10px"><b>${label}</b></span>
                       <span>$${val.toLocaleString(undefined, {minimumFractionDigits: 2})} (${pct}%)</span>
                     </div>
@@ -395,7 +399,7 @@
                 }
 
                 if (items.length) {
-                  html += `<div class="section-title">Breakdown</div>`;
+                  html += `<div class="section-title">${label} Breakdown</div>`;
                   items.forEach(item => {
                     if (item.Amount !== undefined && item.Amount !== null) {
                       html += `
