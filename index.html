@@ -87,6 +87,36 @@
       width: 100% !important;
       height: 400px !important;
     }
+
+    #chartjs-tooltip {
+      background: var(--mantle);
+      color: var(--text);
+      border-radius: 4px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      padding: 8px;
+      transition: all 0.1s ease;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      line-height: 1.2;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    #chartjs-tooltip .title {
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+
+    #chartjs-tooltip .section-title {
+      font-weight: bold;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+
+    #chartjs-tooltip .breakdown-item {
+      display: flex;
+      justify-content: space-between;
+    }
   </style>
 </head>
 <body>
@@ -96,9 +126,12 @@
     <input type="file" id="jsonUpload" accept="application/json" /><br><br>
     <p>(This tool runs locally in your browser. No data is uploaded.)</p>
   </header>
+
   <div class="chart-container">
     <canvas id="paymentChart"></canvas>
   </div>
+
+  <div id="chartjs-tooltip" style="opacity:0; position:absolute; pointer-events:none;"></div>
 
   <div class="breakdown-container" style="max-width:1000px; margin:2rem auto; color: var(--text);">
     <label for="yearSelect" style="font-weight:500; margin-right:0.5rem;">Select Year:</label>
@@ -201,62 +234,92 @@
               y: {
                 stacked: true,
                 title: { display: true, text: 'Amount (USD)', color: themeColors.subtext },
-                ticks: { color: themeColors.text, callback: v => '$' + v.toLocaleString() },
+                ticks: { color: themeColors.text, callback: v => '$' + v.toLocaleString(undefined, {minimumFractionDigits: 2}) },
                 grid: { color: themeColors.surface0 },
               }
             },
             plugins: {
               tooltip: {
-                callbacks: {
-                  // preserve your existing label callback
-                  label: function(ctx) {
-                    const label = ctx.dataset.label;
-                    const val   = ctx.parsed.y;
-                    const total = ctx.chart.data.datasets
-                                      .reduce((sum, ds) => sum + (ds.data[ctx.dataIndex]||0), 0);
-                    const pct   = ((val/total)*100).toFixed(1);
-                    return `${label}: $${val.toLocaleString()} (${pct}% of $${total.toLocaleString()})`;
-                  },
-                  // **new** footer callback to show breakdown
-                  footer: function(tooltipItems) {
-                    const idx   = tooltipItems[0].dataIndex;
-                    const label = tooltipItems[0].dataset.label;
-                    let items   = [];
+                enabled: false,
+                external: function (context) {
+                  // Tooltip Element
+                  const tooltipEl = document.getElementById('chartjs-tooltip');
+                  const tooltipModel = context.tooltip;
 
-                    // pick the right array off the slip
-                    const slip = slips[idx];
-                    if (label === 'Take Home Pay') {
-                      items = slip['Earnings'] || [];
-                    } else if (label === 'Employer Paid Benefits') {
-                      items = slip['Employer Paid Benefits'] || [];
-                    } else if (label === 'Deductions') {
-                      items = [
-                        ...(slip['Pre Tax Deductions']  || []),
-                        ...(slip['Post Tax Deductions'] || [])
-                      ];
-                    } else if (label === 'Taxes') {
-                      items = slip['Employee Taxes'] || [];
-                    }
-
-                    if (!items.length) {
-                      return []; // no footer
-                    }
-
-                    // build lines: first “Breakdown:”, then each desc
-                    const lines = ['Breakdown:'];
-                    items.forEach(item => {
-                      const amt = item.Amount != null
-                        ? item.Amount
-                        : (item.YTD != null ? item.YTD : 0);
-                      lines.push(
-                        `${item.Description}: $${amt.toLocaleString(undefined,{minimumFractionDigits:2})}`
-                      );
-                    });
-                    return lines;
+                  // Hide if no tooltip
+                  if (tooltipModel.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
                   }
-                },
-                // make sure footer is shown
-                footerFontStyle: 'normal'
+
+                  // Set caret position classes (top/bottom)
+                  tooltipEl.classList.remove('above','below','no-transform');
+                  if (tooltipModel.yAlign) {
+                    tooltipEl.classList.add(tooltipModel.yAlign);
+                  } else {
+                    tooltipEl.classList.add('no-transform');
+                  }
+
+                  // Build the HTML
+                  let html = '';
+
+                  // **1) Title (the Check Date)**
+                  tooltipModel.title.forEach(function(title) {
+                    html += `<div class="title">${title}</div>`;
+                  });
+
+                  // **2) Main value line (dataset label + value)**
+                  tooltipModel.dataPoints.forEach(dp => {
+                    const label = dp.dataset.label;
+                    const val   = dp.raw;
+                    const total = context.chart.data.datasets
+                      .reduce((sum, ds) => sum + (ds.data[dp.dataIndex] || 0), 0);
+                    const pct = ((val / total) * 100).toFixed(1);
+                    html += `<div>${label}: $${val.toLocaleString(undefined, {minimumFractionDigits: 2})} (${pct}%)</div>`;
+                  });
+
+                  // **3) Breakdown section**
+                  // Find which bar we’re on:
+                  const idx   = tooltipModel.dataPoints[0].dataIndex;
+                  const label = tooltipModel.dataPoints[0].dataset.label;
+                  const slip  = slips[idx];
+
+                  // Pick the right array:
+                  let items = [];
+                  if (label === 'Take Home Pay') {
+                    items = slip['Earnings'] || [];
+                  } else if (label === 'Employer Paid Benefits') {
+                    items = slip['Employer Paid Benefits'] || [];
+                  } else if (label === 'Deductions') {
+                    items = [
+                      ...(slip['Pre Tax Deductions']  || []),
+                      ...(slip['Post Tax Deductions'] || [])
+                    ];
+                  } else if (label === 'Taxes') {
+                    items = slip['Employee Taxes'] || [];
+                  }
+
+                  if (items.length) {
+                    html += `<div class="section-title">Breakdown</div>`;
+                    items.forEach(item => {
+                      // use Amount or fallback to YTD
+                      const amt = (item.Amount != null ? item.Amount : item.YTD != null ? item.YTD : 0);
+                      html += `
+                        <div class="breakdown-item">
+                        <span style="padding-right: 10px">${item.Description.substring(0, 30)}</span>
+                        <span>$${amt.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                        </div>`;
+                    });
+                  }
+
+                  tooltipEl.innerHTML = html;
+
+                  // **4) Position it**
+                  const canvasRect = context.chart.canvas.getBoundingClientRect();
+                  tooltipEl.style.opacity = 1;
+                  tooltipEl.style.left    = canvasRect.left + window.pageXOffset + tooltipModel.caretX + 'px';
+                  tooltipEl.style.top     = canvasRect.top  + window.pageYOffset + tooltipModel.caretY + 'px';
+                }
               },
               legend: {
                 labels: { color: themeColors.text },
