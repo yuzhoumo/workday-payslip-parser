@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Workday Payslip Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤑</text></svg>">
-  <!-- Pyodide for Excel parsing -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
@@ -195,16 +193,15 @@
   </div>
 
   <script>
-    // Get CSS variable colors
     const rootStyle = getComputedStyle(document.documentElement);
     const themeColors = {
-      text: rootStyle.getPropertyValue('--text').trim(),
-      subtext: rootStyle.getPropertyValue('--subtext').trim(),
+      text:     rootStyle.getPropertyValue('--text').trim(),
+      subtext:  rootStyle.getPropertyValue('--subtext').trim(),
       surface0: rootStyle.getPropertyValue('--surface0').trim(),
-      green: rootStyle.getPropertyValue('--green').trim(),
-      blue: rootStyle.getPropertyValue('--blue').trim(),
-      yellow: rootStyle.getPropertyValue('--yellow').trim(),
-      red: rootStyle.getPropertyValue('--red').trim(),
+      green:    rootStyle.getPropertyValue('--green').trim(),
+      blue:     rootStyle.getPropertyValue('--blue').trim(),
+      yellow:   rootStyle.getPropertyValue('--yellow').trim(),
+      red:      rootStyle.getPropertyValue('--red').trim(),
     };
 
     let pyodide, allSlips = [], paymentChart;
@@ -213,72 +210,70 @@
       pyodide = await loadPyodide();
       await pyodide.loadPackage('micropip');
       await pyodide.runPythonAsync(`
-import micropip
-await micropip.install('openpyxl')
-from datetime import datetime
-from openpyxl import load_workbook
-from enum import Enum
+          import micropip
+          await micropip.install('openpyxl')
 
-class PayslipSection:
-    SINGLE = 'SINGLE'
-    GRID = 'GRID'
-    SECTIONS = {
-        'Company Information': SINGLE,
-        'Payslip Information': SINGLE,
-        'Current and YTD Totals': GRID,
-        'Earnings': GRID,
-        'Employee Taxes': GRID,
-        'Pre Tax Deductions': GRID,
-        'Post Tax Deductions': GRID,
-        'Employer Paid Benefits': GRID,
-        'Taxable Wages': GRID,
-        'Withholding': GRID,
-        'Payment Information': GRID,
-    }
-class OutputFormat(Enum): JSON = 'json'; CSV = 'csv'
+          import json, io
+          from datetime import datetime
+          from openpyxl import load_workbook
 
-def parse_table_single_row(ws, start_row, output, fmt=OutputFormat.JSON):
-    key_prefix = ws.cell(start_row,1).value
-    label_row = start_row+1; data_row=start_row+2; col=1
-    output[key_prefix] = {} if fmt==OutputFormat.JSON else None
-    while ws.cell(label_row,col).value:
-        key_suffix = ws.cell(label_row,col).value
-        val = ws.cell(data_row,col).value
-        col += 1
-        output[key_prefix][key_suffix] = val if fmt==OutputFormat.JSON else None
+          SINGLE, GRID = 'SINGLE', 'GRID'
 
-def parse_table_grid(ws, start_row, output, fmt=OutputFormat.JSON):
-    key_prefix = ws.cell(start_row,1).value
-    label_row = start_row+1; data_row=start_row+2
-    output[key_prefix] = [] if fmt==OutputFormat.JSON else None
-    last_row = ws.max_row
-    while data_row<=last_row and ws.cell(data_row,1).value not in PayslipSection.SECTIONS:
-        col = 2; key_suffix_1 = ws.cell(data_row,1).value
-        output[key_prefix].append({})
-        while ws.cell(label_row,col).value:
-            key_suffix_2 = ws.cell(label_row,col).value
-            val = ws.cell(data_row,col).value
-            col += 1
-            output[key_prefix][-1]['Description'] = key_suffix_1
-            output[key_prefix][-1][key_suffix_2] = val
-        data_row += 1
+          SECTIONS = {
+              'Company Information': SINGLE,
+              'Payslip Information': SINGLE,
+              'Current and YTD Totals': GRID,
+              'Earnings': GRID,
+              'Employee Taxes': GRID,
+              'Pre Tax Deductions': GRID,
+              'Post Tax Deductions': GRID,
+              'Employer Paid Benefits': GRID,
+              'Taxable Wages': GRID,
+              'Withholding': GRID,
+              'Payment Information': GRID,
+          }
 
-def parse_payslip_to_json(file_bytes):
-    import json, io
-    from openpyxl import load_workbook
-    ws = load_workbook(io.BytesIO(file_bytes)).active
-    result = {}
-    for cell in ws['A']:
-        sec = PayslipSection.SECTIONS.get(cell.value)
-        if sec==PayslipSection.SINGLE: parse_table_single_row(ws, cell.row, result)
-        elif sec==PayslipSection.GRID: parse_table_grid(ws, cell.row, result)
-    return json.dumps(result)
-`);
-      window.js_parse = async (bytes) => {
-        window.convertedBytes = pyodide.toPy(bytes);
+          def parse_table_single_row(ws, start_row, output):
+              key_prefix = ws.cell(start_row,1).value
+              label_row = start_row+1; data_row=start_row+2; col=1
+              output[key_prefix] = {}
+              while ws.cell(label_row,col).value:
+                  key_suffix = ws.cell(label_row,col).value
+                  val = ws.cell(data_row,col).value
+                  col += 1
+                  output[key_prefix][key_suffix] = val
+
+          def parse_table_grid(ws, start_row, output):
+              key_prefix = ws.cell(start_row,1).value
+              label_row = start_row+1; data_row=start_row+2
+              output[key_prefix] = []
+              last_row = ws.max_row
+              while data_row<=last_row and ws.cell(data_row,1).value not in SECTIONS:
+                  col = 2; key_suffix_1 = ws.cell(data_row,1).value
+                  output[key_prefix].append({})
+                  while ws.cell(label_row,col).value:
+                      key_suffix_2 = ws.cell(label_row,col).value
+                      val = ws.cell(data_row,col).value
+                      col += 1
+                      output[key_prefix][-1]['Description'] = key_suffix_1
+                      output[key_prefix][-1][key_suffix_2] = val
+                  data_row += 1
+
+          def parse_payslip_to_json(file_bytes):
+              ws = load_workbook(io.BytesIO(file_bytes)).active
+              result = {}
+              for cell in ws['A']:
+                  sec = SECTIONS.get(cell.value)
+                  if sec == SINGLE: parse_table_single_row(ws, cell.row, result)
+                  elif sec == GRID: parse_table_grid(ws, cell.row, result)
+              return json.dumps(result)
+      `);
+
+      window.js_parse = async (file_bytes) => {
+        window.py_file_bytes = pyodide.toPy(file_bytes);
         return pyodide.runPythonAsync(`
-          from js import convertedBytes
-          parse_payslip_to_json(convertedBytes)
+            from js import py_file_bytes
+            parse_payslip_to_json(py_file_bytes)
         `);
       }
     }
