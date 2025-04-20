@@ -4,7 +4,19 @@ This script parses Excel payslips from Workday into a single table in either
 JSON or CSV format. Payslips can be exported from Workday from each Payslip
 page by clicking on the "Export to Excel" icon in the top right corner.
 
-## Usage
+## Web Usage
+
+For convenience, I've created a web version of the script, along with a
+dashboard available here:
+
+- Web Converter: [payslips.joemo.dev/converter](https://payslips.joemo.dev/converter)
+- Drag-and-Drop Dashboard: [payslips.joemo.dev](https://payslips.joemo.dev/converter)
+
+These are static webpages with the python scripts embedded as WASM using
+Pyodide, so all file processing happens locally. The source code for these
+pages can be found in the `/web` directory.
+
+## Script Usage
 
 Install dependencies using [`uv`](https://github.com/astral-sh/uv):
 
