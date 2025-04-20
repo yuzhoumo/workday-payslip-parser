@@ -17,7 +17,7 @@ web version of the script available here:
 
 These are static webpages with the python scripts embedded as WASM using
 Pyodide, so all file processing happens locally. The source code for these
-pages can be found in the `/web` directory.
+pages can be found on the `gh-pages` branch.
 
 ## Script Usage
 
