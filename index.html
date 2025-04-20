@@ -362,6 +362,8 @@
         const data = JSON.parse(evt.target.result);
         const slips = data.Payslips || [];
 
+        document.getElementById('onloadWrapper').style.display = 'block';
+
         initChart(slips);
 
         // 1) extract all years from your slips
@@ -524,7 +526,6 @@
         yearSelect.addEventListener('change', () => updateForYear(yearSelect.value));
         yearSelect.value = 'all';
         updateForYear('all');
-        document.getElementById('onloadWrapper').style.display = 'block';
       };
       reader.readAsText(file);
     });
