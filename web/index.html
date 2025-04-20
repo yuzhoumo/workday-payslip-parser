@@ -371,13 +371,14 @@ def parse_payslip_to_json(file_bytes):
                 if (items.length) {
                   html += `<div class="section-title">Breakdown</div>`;
                   items.forEach(item => {
-                    // use Amount or fallback to YTD
-                    const amt = (item.Amount != null ? item.Amount : item.YTD != null ? item.YTD : 0);
-                    html += `
-                      <div class="breakdown-item">
-                      <span style="padding-right: 10px">${item.Description.substring(0, 30)}</span>
-                      <span>$${amt.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
-                      </div>`;
+                    if (item.Amount !== null) {
+                      html += `
+                        <div class="breakdown-item">
+                        <span style="padding-right: 10px">${item.Description.substring(0, 30)}</span>
+                        <span>$${item.Amount.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                        </div>
+                      `;
+                    }
                   });
                 }
 
