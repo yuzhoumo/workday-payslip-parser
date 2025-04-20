@@ -119,13 +119,35 @@
       display: flex;
       justify-content: space-between;
     }
+
+    #dropZone {
+      margin: 1.5rem auto;
+      padding: 2rem;
+      max-width: 400px;
+      border: 2px dashed var(--surface1);
+      border-radius: 8px;
+      text-align: center;
+      color: var(--subtext);
+      transition: background 0.2s, border-color 0.2s;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #dropZone.dragover {
+      background: var(--surface0);
+      border-color: var(--blue);
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Workday Payslip Analyzer</h1>
-    <p style="margin-top:0.5em; margin-bottom:0.5em">All processing happens locally in your browser</p>
-    <label for="excelUpload" class="file-label">Select Excel Files</label>
+    <p>All files are processed locally in your browser</p>
+    <div id="dropZone">
+      Drag &amp; drop Excel payslip files here<br>
+      <span style="font-weight:500; color:var(--text)">or click to select</span>
+    </div>
     <input type="file" id="excelUpload" multiple accept=".xlsx" />
   </header>
 
@@ -475,9 +497,8 @@ def parse_payslip_to_json(file_bytes):
       }
     }
 
-    document.getElementById('excelUpload').addEventListener('change', async e=>{
-      const files = Array.from(e.target.files);
-      if(!files.length) return;
+    async function handleFiles(files) {
+      document.getElementById('dropZone').style.display='none';
       document.getElementById('onloadWrapper').style.display='block';
       const slips = [];
       for(const f of files){
@@ -536,6 +557,36 @@ def parse_payslip_to_json(file_bytes):
       yearSelect.addEventListener('change', () => updateForYear(yearSelect.value));
       yearSelect.value = 'all';
       updateForYear('all');
+    }
+
+    document.getElementById('excelUpload').addEventListener('change', async e=>{
+      const files = Array.from(e.target.files);
+      if(!files.length) return;
+      handleFiles(files);
+    });
+
+    // Drag-and-drop zone setup
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('excelUpload');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const dropped = Array.from(e.dataTransfer.files)
+        .filter(f => f.name.toLowerCase().endsWith('.xlsx'));
+      handleFiles(dropped);
     });
 
     initPyodideAndParser();
