@@ -10,7 +10,7 @@ For convenience, I've created a web version of the script, along with a
 dashboard available here:
 
 - Web Converter: [payslips.joemo.dev/converter](https://payslips.joemo.dev/converter)
-- Drag-and-Drop Dashboard: [payslips.joemo.dev](https://payslips.joemo.dev/converter)
+- Drag-and-Drop Dashboard: [payslips.joemo.dev](https://payslips.joemo.dev)
 
 These are static webpages with the python scripts embedded as WASM using
 Pyodide, so all file processing happens locally. The source code for these
