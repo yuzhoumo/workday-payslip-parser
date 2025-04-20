@@ -9,8 +9,6 @@
   <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Inter font -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
       --base: #1e1e2e;
@@ -34,7 +32,7 @@
     }
 
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: sans-serif;
       background-color: var(--base);
       color: var(--text);
       line-height: 1.6;
@@ -49,7 +47,7 @@
     }
 
     header h1 {
-      font-family: 'Inter', sans-serif;
+      font-family: sans-serif;
       font-size: 2rem;
       font-weight: 600;
       color: var(--text);
@@ -62,7 +60,7 @@
       border-radius: 8px;
       background-color: var(--surface1);
       color: var(--text);
-      font-family: 'Inter', sans-serif;
+      font-family: sans-serif;
       font-weight: 500;
       font-size: 1rem;
       cursor: pointer;
@@ -121,42 +119,42 @@
       justify-content: space-between;
     }
 
-#dropZone {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100vw; height: 100vh;
-  background-color: var(--mantle);
-  border: 2px dashed var(--surface1);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  color: var(--subtext);
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.2s, border-color 0.2s;
-  z-index: 1000;
-}
+    #dropZone, #loading {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background-color: var(--mantle);
+      border: 2px dashed var(--surface1);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      color: var(--subtext);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s, border-color 0.2s;
+      z-index: 1000;
+    }
 
-#dropZone:hover {
-  background-color: var(--surface0);
-  border-color: var(--blue);
-  color: var(--text);
-}
+    #dropZone:hover {
+      background-color: var(--surface0);
+      border-color: var(--blue);
+      color: var(--text);
+    }
 
-#dropZone h1 {
-  font-size: 2rem;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 0.5rem;
-}
+    #dropZone h1, #loading h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
 
-#dropZone p {
-  margin-bottom: 1.5rem;
-  font-weight: 400;
-  color: var(--subtext);
-}
+    #dropZone p, #loading p {
+      margin-bottom: 1.5rem;
+      font-weight: 400;
+      color: var(--subtext);
+    }
   </style>
 </head>
 <body>
@@ -164,7 +162,12 @@
     <h1>Workday Payslip Analyzer</h1>
   </header>
 
-  <div id="dropZone">
+  <div id="loading">
+    <h1>Workday Payslip Analyzer</h1>
+    <p>Loading converter code... Please wait a moment...</p>
+  </div>
+
+  <div id="dropZone" style="display:none">
     <div style="padding-bottom:1em">
       <h1>Workday Payslip Analyzer</h1>
       <p>All files are processed locally in your browser</p>
@@ -583,37 +586,42 @@ def parse_payslip_to_json(file_bytes):
       updateForYear('all');
     }
 
-    document.getElementById('excelUpload').addEventListener('change', async e=>{
-      const files = Array.from(e.target.files);
-      if(!files.length) return;
-      handleFiles(files);
-    });
+    function initCallback() {
+      document.getElementById('loading').remove();
+      document.getElementById('dropZone').style = "";
 
-    // Drag-and-drop zone setup
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('excelUpload');
+      document.getElementById('excelUpload').addEventListener('change', async e=>{
+        const files = Array.from(e.target.files);
+        if(!files.length) return;
+        handleFiles(files);
+      });
 
-    dropZone.addEventListener('click', () => fileInput.click());
+      // Drag-and-drop zone setup
+      const dropZone = document.getElementById('dropZone');
+      const fileInput = document.getElementById('excelUpload');
 
-    dropZone.addEventListener('dragover', e => {
-      e.preventDefault();
-      dropZone.classList.add('dragover');
-    });
+      dropZone.addEventListener('click', () => fileInput.click());
 
-    dropZone.addEventListener('dragleave', e => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-    });
+      dropZone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      });
 
-    dropZone.addEventListener('drop', e => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-      const dropped = Array.from(e.dataTransfer.files)
-        .filter(f => f.name.toLowerCase().endsWith('.xlsx'));
-      handleFiles(dropped);
-    });
+      dropZone.addEventListener('dragleave', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+      });
 
-    initPyodideAndParser();
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const dropped = Array.from(e.dataTransfer.files)
+          .filter(f => f.name.toLowerCase().endsWith('.xlsx'));
+        handleFiles(dropped);
+      });
+    }
+
+    initPyodideAndParser().then(initCallback);
   </script>
 </body>
 </html>
