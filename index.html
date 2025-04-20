@@ -415,10 +415,10 @@
           container.innerHTML = '';  // clear previous
           for (const [secName, aggMap] of Object.entries(aggregates)) {
             // section title
-            const h3 = document.createElement('h3');
-            h3.textContent = secName;
-            h3.style.marginTop = '1rem';
-            container.appendChild(h3);
+            const h2 = document.createElement('h2');
+            h2.textContent = secName;
+            h2.style.marginTop = '1rem';
+            container.appendChild(h2);
 
             // if no items, show placeholder
             if (Object.keys(aggMap).length === 0) {
@@ -450,6 +450,18 @@
                   ).join('')}
               </tbody>
             `;
+
+            // section total
+            const sectionTotal = document.createElement('tfoot');
+            sectionTotal.innerHTML = `
+              <tr style="padding-top:25px">
+                <td style="padding:4px;"><b>Section Total</b></td>
+                <td style="padding:4px;
+                text-align:right"><em>$${Object.entries(aggMap).reduce((sum, x) => sum + x[1], 0).toLocaleString(undefined, {minimumFractionDigits:2})}</em></td>
+              </tr>
+            `;
+            table.appendChild(sectionTotal);
+
             container.appendChild(table);
           }
         }
