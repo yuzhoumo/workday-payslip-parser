@@ -16,8 +16,9 @@ web version of the script available here:
 - Web Converter: [payslips.joemo.dev/converter](https://payslips.joemo.dev/converter)
 
 These are static webpages with the python scripts embedded as WASM using
-Pyodide, so all file processing happens locally. The source code for these
-pages can be found on the `gh-pages` branch.
+Pyodide, so all file processing happens locally. The [source code for these
+pages](https://github.com/yuzhoumo/workday-payslip-parser/tree/gh-pages) are
+on the `gh-pages` branch.
 
 ## Script Usage
 
