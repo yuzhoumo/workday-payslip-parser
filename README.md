@@ -4,6 +4,9 @@ This script parses Excel payslips from Workday into a single table in either
 JSON or CSV format. Payslips can be exported from Workday from each Payslip
 page by clicking on the "Export to Excel" icon in the top right corner.
 
+Refer to the included [guide](payslip-automation-guide.md) on how to
+automatically download all of your payslips.
+
 ## Web Usage
 
 For convenience, I've created a drag-and-drop web dashboard, along with a
