@@ -324,8 +324,8 @@ def parse_payslip_to_json(file_bytes):
                   html += `<div class="title">Payslip - ${title}</div>`;
                 });
 
-                const begin = slips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
-                const end = slips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
+                const begin = allSlips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
+                const end = allSlips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
                 html += `
                   <div class="breakdown-item" style="margin-bottom:1em">
                     <span><em>${begin} - ${end}</em></span>
@@ -351,7 +351,7 @@ def parse_payslip_to_json(file_bytes):
                 // Find which bar we’re on:
                 const idx   = tooltipModel.dataPoints[0].dataIndex;
                 const label = tooltipModel.dataPoints[0].dataset.label;
-                const slip  = slips[idx];
+                const slip  = allSlips[idx];
 
                 // Pick the right array:
                 let items = [];
@@ -371,7 +371,7 @@ def parse_payslip_to_json(file_bytes):
                 if (items.length) {
                   html += `<div class="section-title">Breakdown</div>`;
                   items.forEach(item => {
-                    if (item.Amount !== null) {
+                    if (item.Amount !== undefined && item.Amount !== null) {
                       html += `
                         <div class="breakdown-item">
                         <span style="padding-right: 10px">${item.Description.substring(0, 30)}</span>
@@ -398,12 +398,13 @@ def parse_payslip_to_json(file_bytes):
     }
 
     function updateChart(slips) {
+      allSlips = slips;
       const labels = slips.map(s=>s['Payslip Information']['Check Date']);
       const earnings = slips.map(s=> s['Earnings'].reduce((a,b)=>a+(b.Amount||0),0));
       const benefits = slips.map(s=> (s['Employer Paid Benefits']||[]).reduce((a,b)=>a+(b.Amount||0),0));
       const taxes = slips.map(s=> s['Employee Taxes'].reduce((a,b)=>a+(b.Amount||0),0));
-      const preD = slips.map(s=> (s['Pre Tax Deductions']||[]).reduce((a,b)=>a+(b.Amount||0),0));
-      const postD = slips.map(s=> (s['Post Tax Deductions']||[]).reduce((a,b)=>a+(b.Amount||0),0));
+      const preD = slips.map(s=> (s['Current and YTD Totals']||[]).reduce((a,b)=>a+(b.Description === 'Current' ? b['Pre Tax Deductions'] : 0),0));
+      const postD = slips.map(s=> (s['Current and YTD Totals']||[]).reduce((a,b)=>a+(b.Description === 'Current' ? b['Post Tax Deductions'] : 0),0));
       const ded = preD.map((v,i)=>v+postD[i]);
       paymentChart.data.labels = labels;
       paymentChart.data.datasets = [
