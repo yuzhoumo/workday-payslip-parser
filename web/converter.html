@@ -6,9 +6,22 @@
   <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
 </head>
 <body>
-  <h1>Workday Excel Payslips → JSON</h1>
+  <h1>Workday Excel Payslips Converter</h1>
+  <p>All files are processed locally in your browser. Use Shift+Click to select multiple.</p>
   <input type="file" id="files" multiple accept=".xlsx" />
-  <button id="convert">Convert to JSON</button>
+
+  <br><br>
+
+  <p id="loading">loading converter code... please wait...</p>
+
+  <div id="button-wrapper" style="display:none">
+    <button id="convert-csv">Convert to CSV</button>
+    <button id="convert">Convert to JSON</button>
+  </div>
+
+  <br>
+
+  <a id="download-link" href=''></a>
   <pre id="output"></pre>
 
   <script>
@@ -137,6 +150,32 @@ def parse_payslip(fmt: OutputFormat, filename: str) -> dict:
       // Now, we define a function in Python that we will call from JS
       await pyodide.runPythonAsync(`
 import json
+import csv
+from io import StringIO
+
+def parse_payslip_to_csv(file_bytes):
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    file = BytesIO(file_bytes)
+    wb = load_workbook(file)
+    ws = wb.active
+
+    payslip_data = {}
+    for cell in ws['A']:
+        match PayslipSection.SECTIONS.get(cell.value):
+            case PayslipSection.SINGLE:
+                parse_table_single_row(ws, cell.row, payslip_data, OutputFormat.CSV)
+            case PayslipSection.GRID:
+                parse_table_grid(ws, cell.row, payslip_data, OutputFormat.CSV)
+
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=list(payslip_data.keys()))
+    writer.writeheader()
+    writer.writerow(payslip_data)
+
+    return output.getvalue()
+
 
 def parse_payslip_to_json(file_bytes):
     from io import BytesIO
@@ -170,27 +209,77 @@ from js import console, pyBytes
 parse_payslip_to_json(pyBytes)
 `);
       };
+
+      window.js_parse_csv = async function(fileBytes) {
+        const pyBytes = pyodide.toPy(fileBytes);
+        window.pyBytes = pyBytes;
+        return await pyodide.runPythonAsync(`
+      from js import pyBytes
+      parse_payslip_to_csv(pyBytes)
+      `);
+      };
+    }
+
+    function initCallback() {
+      // Convert files to JSON when the user clicks the "Convert" button
+      const btnJson = document.getElementById("convert");
+      btnJson.onclick = async () => {
+        const out = document.getElementById("output");
+        out.textContent = "⏳ processing…";
+        const link = document.getElementById("download-link");
+        link.textContent = ""
+
+        const files = document.getElementById("files").files;
+        let combined = { Payslips: [] };
+
+        for (let file of files) {
+          const buf = await file.arrayBuffer();
+          const jsonStr = await window.js_parse(new Uint8Array(buf));
+          combined.Payslips.push(JSON.parse(jsonStr));
+        }
+
+        const strContent = JSON.stringify(combined, null, 2);
+        out.textContent = strContent
+
+        const blob = new Blob([strContent], { type: "text/json" });
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.download = "payslips.json";
+        link.textContent = "Click here to download json file"
+      };
+
+      const btnCsv  = document.getElementById("convert-csv");
+      btnCsv.onclick = async () => {
+        const out = document.getElementById("output");
+        out.textContent = "⏳ processing…";
+        const link = document.getElementById("download-link");
+        link.textContent = ""
+
+        const files = document.getElementById("files").files;
+        let allCsv = [];
+
+        for (let file of files) {
+          const buf = await file.arrayBuffer();
+          const csv = await window.js_parse_csv(new Uint8Array(buf));
+          allCsv.push(csv.trim()); // in case multiple files
+        }
+
+        out.textContent = allCsv.join('\n');
+
+        const blob = new Blob([allCsv.join('\n')], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.download = "payslips.csv";
+        link.textContent = "Click here to download csv file"
+      };
+
+      document.getElementById("loading").remove();
+      document.getElementById("button-wrapper").style = "";
     }
 
     // Initialize the Pyodide environment
-    initPyodide();
+    initPyodide().then(initCallback);
 
-    // Convert files to JSON when the user clicks the "Convert" button
-    document.getElementById("convert").onclick = async () => {
-      const out = document.getElementById("output");
-      out.textContent = "⏳ processing…";
-
-      const files = document.getElementById("files").files;
-      let combined = { Payslips: [] };
-
-      for (let file of files) {
-        const buf = await file.arrayBuffer();
-        const jsonStr = await window.js_parse(new Uint8Array(buf));
-        combined.Payslips.push(JSON.parse(jsonStr));
-      }
-
-      out.textContent = JSON.stringify(combined, null, 2);
-    };
   </script>
 </body>
 </html>
