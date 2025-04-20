@@ -196,7 +196,7 @@
             labels,
             datasets: [
               {
-                label: 'Take Home Pay',
+                label: 'Net Pay',
                 backgroundColor: themeColors.green,
                 data: rawEarnings.map((v, i) => v - deductionsData[i] - taxesData[i] + Math.min(benefitsData[i], 0)),
                 stack: 'stack1'
@@ -265,8 +265,16 @@
 
                   // **1) Title (the Check Date)**
                   tooltipModel.title.forEach(function(title) {
-                    html += `<div class="title">${title}</div>`;
+                    html += `<div class="title">Payslip - ${title}</div>`;
                   });
+
+                  const begin = slips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
+                  const end = slips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
+                  html += `
+                    <div class="breakdown-item" style="margin-bottom:1em">
+                      <span><em>${begin} - ${end}</em></span>
+                    </div>
+                  `;
 
                   // **2) Main value line (dataset label + value)**
                   tooltipModel.dataPoints.forEach(dp => {
@@ -275,7 +283,12 @@
                     const total = context.chart.data.datasets
                       .reduce((sum, ds) => sum + (ds.data[dp.dataIndex] || 0), 0);
                     const pct = ((val / total) * 100).toFixed(1);
-                    html += `<div>${label}: $${val.toLocaleString(undefined, {minimumFractionDigits: 2})} (${pct}%)</div>`;
+                    html += `
+                      <div class="breakdown-item">
+                        <span style="padding-right:10px"><b>${label}</b></span>
+                        <span>$${val.toLocaleString(undefined, {minimumFractionDigits: 2})} (${pct}%)</span>
+                      </div>
+                    `;
                   });
 
                   // **3) Breakdown section**
@@ -286,7 +299,7 @@
 
                   // Pick the right array:
                   let items = [];
-                  if (label === 'Take Home Pay') {
+                  if (label === 'Net Pay') {
                     items = slip['Earnings'] || [];
                   } else if (label === 'Employer Paid Benefits') {
                     items = slip['Employer Paid Benefits'] || [];
