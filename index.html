@@ -160,189 +160,209 @@
     Chart.defaults.font.family = 'Inter, sans-serif';
     Chart.defaults.color = themeColors.text;
 
+    let allSlips = [];
+    let paymentChart;
+
+    function initChart(slips) {
+      if (paymentChart instanceof Chart) {
+        paymentChart.destroy();
+      }
+
+      allSlips = slips;
+      const ctx = document.getElementById('paymentChart');
+
+      paymentChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              stacked: true,
+              title: { display: true, text: 'Check Date', color: themeColors.subtext },
+              ticks: { color: themeColors.text, maxRotation: 45, minRotation: 45 },
+              grid: { color: themeColors.surface0 },
+            },
+            y: {
+              stacked: true,
+              title: { display: true, text: 'Amount (USD)', color: themeColors.subtext },
+              ticks: { color: themeColors.text, callback: v => '$' + v.toLocaleString(undefined, {minimumFractionDigits: 2}) },
+              grid: { color: themeColors.surface0 },
+            }
+          },
+          plugins: {
+            tooltip: {
+              enabled: false,
+              external: function (context) {
+                // Tooltip Element
+                const tooltipEl = document.getElementById('chartjs-tooltip');
+                const tooltipModel = context.tooltip;
+
+                // Hide if no tooltip
+                if (tooltipModel.opacity === 0) {
+                  tooltipEl.style.opacity = 0;
+                  return;
+                }
+
+                // Set caret position classes (top/bottom)
+                tooltipEl.classList.remove('above','below','no-transform');
+                if (tooltipModel.yAlign) {
+                  tooltipEl.classList.add(tooltipModel.yAlign);
+                } else {
+                  tooltipEl.classList.add('no-transform');
+                }
+
+                // Build the HTML
+                let html = '';
+
+                // **1) Title (the Check Date)**
+                tooltipModel.title.forEach(function(title) {
+                  html += `<div class="title">Payslip - ${title}</div>`;
+                });
+
+                const begin = slips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
+                const end = slips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
+                html += `
+                  <div class="breakdown-item" style="margin-bottom:1em">
+                    <span><em>${begin} - ${end}</em></span>
+                  </div>
+                `;
+
+                // **2) Main value line (dataset label + value)**
+                tooltipModel.dataPoints.forEach(dp => {
+                  const label = dp.dataset.label;
+                  const val   = dp.raw;
+                  const total = context.chart.data.datasets
+                    .reduce((sum, ds) => sum + (ds.data[dp.dataIndex] || 0), 0);
+                  const pct = ((val / total) * 100).toFixed(1);
+                  html += `
+                    <div class="breakdown-item">
+                      <span style="padding-right:10px"><b>${label}</b></span>
+                      <span>$${val.toLocaleString(undefined, {minimumFractionDigits: 2})} (${pct}%)</span>
+                    </div>
+                  `;
+                });
+
+                // **3) Breakdown section**
+                // Find which bar we’re on:
+                const idx   = tooltipModel.dataPoints[0].dataIndex;
+                const label = tooltipModel.dataPoints[0].dataset.label;
+                const slip  = slips[idx];
+
+                // Pick the right array:
+                let items = [];
+                if (label === 'Net Pay') {
+                  items = slip['Earnings'] || [];
+                } else if (label === 'Employer Paid Benefits') {
+                  items = slip['Employer Paid Benefits'] || [];
+                } else if (label === 'Deductions') {
+                  items = [
+                    ...(slip['Pre Tax Deductions']  || []),
+                    ...(slip['Post Tax Deductions'] || [])
+                  ];
+                } else if (label === 'Taxes') {
+                  items = slip['Employee Taxes'] || [];
+                }
+
+                if (items.length) {
+                  html += `<div class="section-title">Breakdown</div>`;
+                  items.forEach(item => {
+                    // use Amount or fallback to YTD
+                    const amt = (item.Amount != null ? item.Amount : item.YTD != null ? item.YTD : 0);
+                    html += `
+                      <div class="breakdown-item">
+                      <span style="padding-right: 10px">${item.Description.substring(0, 30)}</span>
+                      <span>$${amt.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                      </div>`;
+                  });
+                }
+
+                tooltipEl.innerHTML = html;
+
+                // **4) Position it**
+                const canvasRect = context.chart.canvas.getBoundingClientRect();
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.left    = canvasRect.left + window.pageXOffset + tooltipModel.caretX + 'px';
+                tooltipEl.style.top     = canvasRect.top  + window.pageYOffset + tooltipModel.caretY + 'px';
+              }
+            },
+            legend: {
+              labels: { color: themeColors.text },
+              position: 'bottom',
+            }
+          }
+        }
+      });
+    }
+
+    function updateChart(slips) {
+      // extract check‑dates sorted ascending
+      const sorted = [...slips].sort((a,b) =>
+        new Date(a['Payslip Information']['Check Date'])
+          - new Date(b['Payslip Information']['Check Date'])
+      );
+      const labels = slips.map(s => s['Payslip Information']['Check Date']);
+
+      const rawEarnings = slips.map(s => s['Earnings']
+        .map(e => e.Amount || 0).reduce((a, b) => a + b, 0)
+      );
+      const benefitsData = slips.map(s => (s['Employer Paid Benefits'] || [])
+        .map(b => b.Amount || 0).reduce((a, b) => a + b, 0)
+      );
+
+      const taxesData = slips.map(s => s['Employee Taxes']
+        .map(t => (t.Amount || 0)).reduce((a, b) => a + b, 0)
+      );
+      const preDeductions = slips.map(s => (s['Pre Tax Deductions'] || [])
+        .map(d => (d.Amount || 0)).reduce((a, b) => a + b, 0)
+      );
+      const postDeductions = slips.map(s => (s['Post Tax Deductions'] || [])
+        .map(d => (d.Amount || 0)).reduce((a, b) => a + b, 0)
+      );
+      const deductionsData = preDeductions.map((v, i) => v + postDeductions[i]);
+
+      paymentChart.data.labels = labels;
+      paymentChart.data.datasets = [
+        {
+          label: 'Net Pay',
+          backgroundColor: themeColors.green,
+          data: rawEarnings.map((v, i) => v - deductionsData[i] - taxesData[i] + Math.min(benefitsData[i], 0)),
+          stack: 'stack1'
+        },
+        {
+          label: 'Employer Paid Benefits',
+          backgroundColor: themeColors.blue,
+          data: benefitsData.map((v, i) => Math.max(v, 0)),
+          stack: 'stack1'
+        },
+        {
+          label: 'Deductions',
+          backgroundColor: themeColors.yellow,
+          data: deductionsData.map((v, i) => Math.max(v, 0)),
+          stack: 'stack1'
+        },
+        {
+          label: 'Taxes',
+          backgroundColor: themeColors.red,
+          data: taxesData.map((v, i) => Math.max(v, 0)),
+          stack: 'stack1'
+        }
+      ];
+
+      paymentChart.update();
+    }
+
     document.getElementById('jsonUpload').addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
+
       reader.onload = function(evt) {
         const data = JSON.parse(evt.target.result);
-        const slips = data.Payslips;
-        const labels = slips.map(s => s['Payslip Information']['Check Date']);
+        const slips = data.Payslips || [];
 
-        const rawEarnings = slips.map(s => s['Earnings']
-          .map(e => e.Amount || 0).reduce((a, b) => a + b, 0)
-        );
-        const benefitsData = slips.map(s => (s['Employer Paid Benefits'] || [])
-          .map(b => b.Amount || 0).reduce((a, b) => a + b, 0)
-        );
-
-        const taxesData = slips.map(s => s['Employee Taxes']
-          .map(t => (t.Amount || 0)).reduce((a, b) => a + b, 0)
-        );
-        const preDeductions = slips.map(s => (s['Pre Tax Deductions'] || [])
-          .map(d => (d.Amount || 0)).reduce((a, b) => a + b, 0)
-        );
-        const postDeductions = slips.map(s => (s['Post Tax Deductions'] || [])
-          .map(d => (d.Amount || 0)).reduce((a, b) => a + b, 0)
-        );
-        const deductionsData = preDeductions.map((v, i) => v + postDeductions[i]);
-
-        if (window.paymentChart instanceof Chart) {
-          window.paymentChart.destroy();
-        }
-
-        const ctx = document.getElementById('paymentChart');
-        window.paymentChart = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [
-              {
-                label: 'Net Pay',
-                backgroundColor: themeColors.green,
-                data: rawEarnings.map((v, i) => v - deductionsData[i] - taxesData[i] + Math.min(benefitsData[i], 0)),
-                stack: 'stack1'
-              },
-              {
-                label: 'Employer Paid Benefits',
-                backgroundColor: themeColors.blue,
-                data: benefitsData.map((v, i) => Math.max(v, 0)),
-                stack: 'stack1'
-              },
-              {
-                label: 'Deductions',
-                backgroundColor: themeColors.yellow,
-                data: deductionsData.map((v, i) => Math.max(v, 0)),
-                stack: 'stack1'
-              },
-              {
-                label: 'Taxes',
-                backgroundColor: themeColors.red,
-                data: taxesData.map((v, i) => Math.max(v, 0)),
-                stack: 'stack1'
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-              x: {
-                stacked: true,
-                title: { display: true, text: 'Check Date', color: themeColors.subtext },
-                ticks: { color: themeColors.text, maxRotation: 45, minRotation: 45 },
-                grid: { color: themeColors.surface0 },
-              },
-              y: {
-                stacked: true,
-                title: { display: true, text: 'Amount (USD)', color: themeColors.subtext },
-                ticks: { color: themeColors.text, callback: v => '$' + v.toLocaleString(undefined, {minimumFractionDigits: 2}) },
-                grid: { color: themeColors.surface0 },
-              }
-            },
-            plugins: {
-              tooltip: {
-                enabled: false,
-                external: function (context) {
-                  // Tooltip Element
-                  const tooltipEl = document.getElementById('chartjs-tooltip');
-                  const tooltipModel = context.tooltip;
-
-                  // Hide if no tooltip
-                  if (tooltipModel.opacity === 0) {
-                    tooltipEl.style.opacity = 0;
-                    return;
-                  }
-
-                  // Set caret position classes (top/bottom)
-                  tooltipEl.classList.remove('above','below','no-transform');
-                  if (tooltipModel.yAlign) {
-                    tooltipEl.classList.add(tooltipModel.yAlign);
-                  } else {
-                    tooltipEl.classList.add('no-transform');
-                  }
-
-                  // Build the HTML
-                  let html = '';
-
-                  // **1) Title (the Check Date)**
-                  tooltipModel.title.forEach(function(title) {
-                    html += `<div class="title">Payslip - ${title}</div>`;
-                  });
-
-                  const begin = slips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
-                  const end = slips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
-                  html += `
-                    <div class="breakdown-item" style="margin-bottom:1em">
-                      <span><em>${begin} - ${end}</em></span>
-                    </div>
-                  `;
-
-                  // **2) Main value line (dataset label + value)**
-                  tooltipModel.dataPoints.forEach(dp => {
-                    const label = dp.dataset.label;
-                    const val   = dp.raw;
-                    const total = context.chart.data.datasets
-                      .reduce((sum, ds) => sum + (ds.data[dp.dataIndex] || 0), 0);
-                    const pct = ((val / total) * 100).toFixed(1);
-                    html += `
-                      <div class="breakdown-item">
-                        <span style="padding-right:10px"><b>${label}</b></span>
-                        <span>$${val.toLocaleString(undefined, {minimumFractionDigits: 2})} (${pct}%)</span>
-                      </div>
-                    `;
-                  });
-
-                  // **3) Breakdown section**
-                  // Find which bar we’re on:
-                  const idx   = tooltipModel.dataPoints[0].dataIndex;
-                  const label = tooltipModel.dataPoints[0].dataset.label;
-                  const slip  = slips[idx];
-
-                  // Pick the right array:
-                  let items = [];
-                  if (label === 'Net Pay') {
-                    items = slip['Earnings'] || [];
-                  } else if (label === 'Employer Paid Benefits') {
-                    items = slip['Employer Paid Benefits'] || [];
-                  } else if (label === 'Deductions') {
-                    items = [
-                      ...(slip['Pre Tax Deductions']  || []),
-                      ...(slip['Post Tax Deductions'] || [])
-                    ];
-                  } else if (label === 'Taxes') {
-                    items = slip['Employee Taxes'] || [];
-                  }
-
-                  if (items.length) {
-                    html += `<div class="section-title">Breakdown</div>`;
-                    items.forEach(item => {
-                      // use Amount or fallback to YTD
-                      const amt = (item.Amount != null ? item.Amount : item.YTD != null ? item.YTD : 0);
-                      html += `
-                        <div class="breakdown-item">
-                        <span style="padding-right: 10px">${item.Description.substring(0, 30)}</span>
-                        <span>$${amt.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
-                        </div>`;
-                    });
-                  }
-
-                  tooltipEl.innerHTML = html;
-
-                  // **4) Position it**
-                  const canvasRect = context.chart.canvas.getBoundingClientRect();
-                  tooltipEl.style.opacity = 1;
-                  tooltipEl.style.left    = canvasRect.left + window.pageXOffset + tooltipModel.caretX + 'px';
-                  tooltipEl.style.top     = canvasRect.top  + window.pageYOffset + tooltipModel.caretY + 'px';
-                }
-              },
-              legend: {
-                labels: { color: themeColors.text },
-                position: 'bottom',
-              }
-            }
-          }
-        });
+        initChart(slips);
 
         // 1) extract all years from your slips
         const years = Array.from(new Set(
@@ -495,6 +515,7 @@
           }
 
           // now compute and render exactly as before
+          updateChart(slipsForYear);
           const aggs = computeAggregates(slipsForYear);
           renderBreakdown(aggs);
         }
