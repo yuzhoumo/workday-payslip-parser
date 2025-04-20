@@ -51,6 +51,21 @@
       color: var(--text);
     }
 
+    .spinner {
+      border: 4px solid var(--surface1);
+      border-top: 4px solid var(--blue);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
     .file-label {
       display: inline-block;
       margin-top: 1.5rem;
@@ -65,6 +80,7 @@
       transition: background 0.2s ease;
       user-select: none;
     }
+
     .file-label:hover {
       background-color: var(--surface2);
     }
@@ -148,10 +164,16 @@
       margin-bottom: 0.5rem;
     }
 
-    #dropZone p, #loading p {
+    #dropZone p a, #loading p {
       margin-bottom: 1.5rem;
       font-weight: 400;
       color: var(--subtext);
+    }
+
+    #dropZone.dragover {
+      background-color: var(--surface0);
+      border-color: var(--blue);
+      color: var(--text);
     }
   </style>
 </head>
@@ -162,13 +184,17 @@
 
   <div id="loading">
     <h1>Workday Payslip Analyzer</h1>
-    <p>Loading converter code... Please wait a moment...</p>
+    <p>Getting things ready. Hang tight while we load the analyzer!</p>
+    <div class="spinner"></div>
   </div>
 
   <div id="dropZone" style="display:none">
-    <div style="padding-bottom:1em">
+    <div style="padding-bottom:2em">
       <h1>Workday Payslip Analyzer</h1>
-      <p>All files are processed locally in your browser</p>
+        <p>Data is processed privately inside of your browser and is never transmitted.</p>
+        <p>
+          <a href="https://github.com/yuzhoumo/workday-payslip-parser/blob/gh-pages/index.html" target="_blank" onclick="event.stopPropagation()">view source code</a>
+        </p>
     </div>
     <div>
       <span style="font-weight:500; color:var(--text)">Drag &amp; drop Excel payslip files here<br>or click to select</span>
@@ -193,7 +219,9 @@
   </div>
 
   <script>
+
     const rootStyle = getComputedStyle(document.documentElement);
+
     const themeColors = {
       text:     rootStyle.getPropertyValue('--text').trim(),
       subtext:  rootStyle.getPropertyValue('--subtext').trim(),
@@ -586,16 +614,27 @@
     function initCallback() {
       document.getElementById('loading').remove();
       document.getElementById('dropZone').style = "";
-
       document.getElementById('excelUpload').addEventListener('change', async e=>{
         const files = Array.from(e.target.files);
         if(!files.length) return;
         handleFiles(files);
       });
 
-      // Drag-and-drop zone setup
       const dropZone = document.getElementById('dropZone');
       const fileInput = document.getElementById('excelUpload');
+
+      // Show visual feedback on drag
+      window.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+
+      window.addEventListener("dragleave", (e) => {
+        // Only remove if dragging leaves the whole window
+        if (e.clientX === 0 && e.clientY === 0) {
+          dropZone.classList.remove("dragover");
+        }
+      });
 
       dropZone.addEventListener('click', () => fileInput.click());
 
