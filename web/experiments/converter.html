@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Payslip → JSON in the Browser</title>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+</head>
+<body>
+  <h1>Drag &amp; Drop Payslips → JSON</h1>
+  <input type="file" id="files" multiple accept=".xlsx" />
+  <button id="convert">Convert to JSON</button>
+  <pre id="output"></pre>
+
+  <script>
+    let pyodide;
+
+    async function initPyodide() {
+      pyodide = await loadPyodide();
+      await pyodide.loadPackage("micropip");
+      await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('openpyxl')
+
+from datetime import datetime
+from openpyxl import load_workbook
+
+from io import TextIOWrapper
+from openpyxl.worksheet.worksheet import Worksheet
+from typing import Any
+from enum import Enum
+
+class PayslipSection:
+    SINGLE = 'SINGLE'
+    GRID = 'GRID'
+    SECTIONS = {
+        'Company Information': SINGLE,
+        'Payslip Information': SINGLE,
+        'Current and YTD Totals': GRID,
+        'Earnings': GRID,
+        'Employee Taxes': GRID,
+        'Pre Tax Deductions': GRID,
+        'Post Tax Deductions': GRID,
+        'Employer Paid Benefits': GRID,
+        'Taxable Wages': GRID,
+        'Withholding': GRID,
+        'Payment Information': GRID,
+    }
+
+
+class OutputFormat(Enum):
+    JSON = 'json'
+    CSV = 'csv'
+
+
+def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict,
+                           fmt: OutputFormat = OutputFormat.JSON):
+    key_prefix = ws.cell(start_row, 1).value
+    label_row = start_row + 1
+    data_row = start_row + 2
+    col = 1
+
+    if fmt == OutputFormat.JSON:
+        output[key_prefix] = {}
+
+    while ws.cell(label_row, col).value is not None:
+        key_suffix = ws.cell(label_row, col).value
+        val = ws.cell(data_row, col).value
+        col += 1
+
+        if fmt == OutputFormat.JSON:
+            output[key_prefix][key_suffix] = val
+        else:
+            key = f'{key_prefix} - {key_suffix}'
+            output[key] = val
+
+
+def parse_table_grid(ws: Worksheet, start_row: Any, output: dict,
+                     fmt: OutputFormat = OutputFormat.JSON):
+
+    key_prefix = ws.cell(start_row, 1).value
+    label_row = start_row + 1
+    data_row = start_row + 2
+
+    if fmt == OutputFormat.JSON:
+        output[key_prefix] = []
+
+    last_row = ws.max_row
+    while ws.cell(data_row, 1).value not in PayslipSection.SECTIONS and data_row <= last_row:
+        col = 2
+        key_suffix_1 = ws.cell(data_row, 1).value
+
+        if fmt == OutputFormat.JSON:
+            output[key_prefix].append({})
+
+        while ws.cell(label_row, col).value is not None:
+            key_suffix_2 = ws.cell(label_row, col).value
+            val = ws.cell(data_row, col).value
+            col += 1
+
+            if fmt == OutputFormat.JSON:
+                output[key_prefix][-1]['Description'] = key_suffix_1
+                output[key_prefix][-1][key_suffix_2] = val
+            else:
+                key = f'{key_prefix} - {key_suffix_1} - {key_suffix_2}'
+                output[key] = val
+        data_row += 1
+
+
+def parse_payslip(fmt: OutputFormat, filename: str) -> dict:
+    """
+    Parses a payslip Excel file and extracts relevant information
+    based on section headers.
+
+    Args:
+        fmt (OutputFormat): Format of the output file (either json or csv).
+        filename (str): Path to the Excel (.xlsx) file.
+
+    Returns:
+        dict: A dictionary with keys as constructed from table headers
+              and values as extracted data.
+    """
+    ws = load_workbook(filename).active
+    if not ws:
+        raise Exception(f"failed to load workbook: {filename}")
+
+    payslip_data = {}
+    for cell in ws['A']:
+        match PayslipSection.SECTIONS.get(cell.value):
+            case PayslipSection.SINGLE:
+                parse_table_single_row(ws, cell.row, payslip_data, fmt)
+            case PayslipSection.GRID:
+                parse_table_grid(ws, cell.row, payslip_data, fmt)
+
+    return payslip_data
+`);
+
+      // Now, we define a function in Python that we will call from JS
+      await pyodide.runPythonAsync(`
+import json
+
+def parse_payslip_to_json(file_bytes):
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    # Convert the file bytes to a BytesIO object
+    file = BytesIO(file_bytes)
+    wb = load_workbook(file)
+    ws = wb.active
+
+    payslip_data = {}
+    for cell in ws['A']:
+        match PayslipSection.SECTIONS.get(cell.value):
+            case PayslipSection.SINGLE:
+                parse_table_single_row(ws, cell.row, payslip_data, OutputFormat.JSON)
+            case PayslipSection.GRID:
+                parse_table_grid(ws, cell.row, payslip_data, OutputFormat.JSON)
+
+    return json.dumps(payslip_data, indent=2)
+`);
+
+      // Expose the parse function to the global scope
+      window.js_parse = async function(fileBytes) {
+        // Convert the fileBytes to Python's bytes type using pyodide.toPy
+        const pyBytes = pyodide.toPy(fileBytes);
+        window.pyBytes = pyBytes;
+        return await pyodide.runPythonAsync(`
+from js import console, pyBytes
+
+# Calling the Python function with the proper data
+parse_payslip_to_json(pyBytes)
+`);
+      };
+    }
+
+    // Initialize the Pyodide environment
+    initPyodide();
+
+    // Convert files to JSON when the user clicks the "Convert" button
+    document.getElementById("convert").onclick = async () => {
+      const out = document.getElementById("output");
+      out.textContent = "⏳ processing…";
+
+      const files = document.getElementById("files").files;
+      let combined = { Payslips: [] };
+
+      for (let file of files) {
+        const buf = await file.arrayBuffer();
+        const jsonStr = await window.js_parse(new Uint8Array(buf));
+        combined.Payslips.push(JSON.parse(jsonStr));
+      }
+
+      out.textContent = JSON.stringify(combined, null, 2);
+    };
+  </script>
+</body>
+</html>
