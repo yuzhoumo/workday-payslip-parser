@@ -1,9 +1,0 @@
-[project]
-name = "workday-payslip-to-csv"
-version = "0.1.0"
-description = "Convert Workday Excel payslips to CSV format"
-readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "openpyxl>=3.1.5",
-]
