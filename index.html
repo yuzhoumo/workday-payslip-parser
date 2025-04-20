@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Workday Payslip Analyzer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤑</text></svg>">
   <!-- Pyodide for Excel parsing -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
   <!-- Chart.js -->
@@ -120,36 +121,59 @@
       justify-content: space-between;
     }
 
-    #dropZone {
-      margin: 1.5rem auto;
-      padding: 2rem;
-      max-width: 400px;
-      border: 2px dashed var(--surface1);
-      border-radius: 8px;
-      text-align: center;
-      color: var(--subtext);
-      transition: background 0.2s, border-color 0.2s;
-      cursor: pointer;
-      user-select: none;
-    }
+#dropZone {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background-color: var(--mantle);
+  border: 2px dashed var(--surface1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: var(--subtext);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s, border-color 0.2s;
+  z-index: 1000;
+}
 
-    #dropZone.dragover {
-      background: var(--surface0);
-      border-color: var(--blue);
-      color: var(--text);
-    }
+#dropZone:hover {
+  background-color: var(--surface0);
+  border-color: var(--blue);
+  color: var(--text);
+}
+
+#dropZone h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+#dropZone p {
+  margin-bottom: 1.5rem;
+  font-weight: 400;
+  color: var(--subtext);
+}
   </style>
 </head>
 <body>
   <header>
     <h1>Workday Payslip Analyzer</h1>
-    <p>All files are processed locally in your browser</p>
-    <div id="dropZone">
-      Drag &amp; drop Excel payslip files here<br>
-      <span style="font-weight:500; color:var(--text)">or click to select</span>
-    </div>
-    <input type="file" id="excelUpload" multiple accept=".xlsx" />
   </header>
+
+  <div id="dropZone">
+    <div style="padding-bottom:1em">
+      <h1>Workday Payslip Analyzer</h1>
+      <p>All files are processed locally in your browser</p>
+    </div>
+    <div>
+      <span style="font-weight:500; color:var(--text)">Drag &amp; drop Excel payslip files here<br>or click to select</span>
+      <input type="file" id="excelUpload" multiple accept=".xlsx" style="display:none" />
+    </div>
+  </div>
 
   <div id="onloadWrapper" style="display:none">
     <div class="chart-container">
