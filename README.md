@@ -6,11 +6,11 @@ page by clicking on the "Export to Excel" icon in the top right corner.
 
 ## Web Usage
 
-For convenience, I've created a web version of the script, along with a
-dashboard available here:
+For convenience, I've created a drag-and-drop web dashboard, along with a
+web version of the script available here:
 
-- Web Converter: [payslips.joemo.dev/converter](https://payslips.joemo.dev/converter)
 - Drag-and-Drop Dashboard: [payslips.joemo.dev](https://payslips.joemo.dev)
+- Web Converter: [payslips.joemo.dev/converter](https://payslips.joemo.dev/converter)
 
 These are static webpages with the python scripts embedded as WASM using
 Pyodide, so all file processing happens locally. The source code for these
