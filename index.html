@@ -222,10 +222,16 @@
   </div>
 
   <script>
+    const globalContext = {
+      allSlips: [],
+      themeColors: null,
+      paymentChart: null,
+      pyodide: null,
+    };
 
+    // Define global theme colors
     const rootStyle = getComputedStyle(document.documentElement);
-
-    const themeColors = {
+    globalContext.themeColors = {
       text:     rootStyle.getPropertyValue('--text').trim(),
       subtext:  rootStyle.getPropertyValue('--subtext').trim(),
       surface0: rootStyle.getPropertyValue('--surface0').trim(),
@@ -235,12 +241,10 @@
       red:      rootStyle.getPropertyValue('--red').trim(),
     };
 
-    let pyodide, allSlips = [], paymentChart;
-
     async function initPyodideAndParser() {
-      pyodide = await loadPyodide();
-      await pyodide.loadPackage('micropip');
-      await pyodide.runPythonAsync(`
+      globalContext.pyodide = await loadPyodide();
+      await globalContext.pyodide.loadPackage('micropip');
+      await globalContext.pyodide.runPythonAsync(`
           import micropip
           await micropip.install('openpyxl')
 
@@ -301,8 +305,8 @@
       `);
 
       window.js_parse = async (file_bytes) => {
-        window.py_file_bytes = pyodide.toPy(file_bytes);
-        return pyodide.runPythonAsync(`
+        window.py_file_bytes = globalContext.pyodide.toPy(file_bytes);
+        return globalContext.pyodide.runPythonAsync(`
             from js import py_file_bytes
             parse_payslip_to_json(py_file_bytes)
         `);
@@ -310,15 +314,15 @@
     }
 
     function initChart(slips) {
-      if (paymentChart) paymentChart.destroy();
-      allSlips = slips;
+      if (globalContext.paymentChart) globalContext.paymentChart.destroy();
+      globalContext.allSlips = slips;
       const ctx = document.getElementById('paymentChart');
-      paymentChart = new Chart(ctx, {
+      globalContext.paymentChart = new Chart(ctx, {
         type: 'bar', data: { labels: [], datasets: [] }, options: {
           responsive: true, maintainAspectRatio: false,
           scales: {
-            x: { stacked: true, title: { display: true, text: 'Check Date', color: themeColors.subtext }, ticks: { color: themeColors.text, maxRotation:45 } , grid:{color:themeColors.surface0} },
-            y: { stacked: true, title: { display: true, text: 'Amount (USD)', color: themeColors.subtext }, ticks:{color:themeColors.text, callback: v=> '$'+v.toLocaleString(undefined,{minimumFractionDigits:2})}, grid:{color:themeColors.surface0} }
+            x: { stacked: true, title: { display: true, text: 'Check Date', color: globalContext.themeColors.subtext }, ticks: { color: globalContext.themeColors.text, maxRotation:45 } , grid:{color: globalContext.themeColors.surface0} },
+            y: { stacked: true, title: { display: true, text: 'Amount (USD)', color: globalContext.themeColors.subtext }, ticks:{color: globalContext.themeColors.text, callback: v=> '$'+v.toLocaleString(undefined,{minimumFractionDigits:2})}, grid:{color: globalContext.themeColors.surface0} }
           },
           plugins: {
             tooltip: {
@@ -350,8 +354,8 @@
                   html += `<div class="title">Payslip - ${title}</div>`;
                 });
 
-                const begin = allSlips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
-                const end = allSlips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
+                const begin = globalContext.allSlips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
+                const end = globalContext.allSlips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
                 html += `
                   <div class="breakdown-item" style="margin-bottom:1em">
                     <span><em>${begin} - ${end}</em></span>
@@ -381,7 +385,7 @@
                 // Find which bar we’re on:
                 const idx   = tooltipModel.dataPoints[0].dataIndex;
                 const label = tooltipModel.dataPoints[0].dataset.label;
-                const slip  = allSlips[idx];
+                const slip  = globalContext.allSlips[idx];
 
                 // Pick the right array:
                 let items = [];
@@ -421,14 +425,14 @@
                 tooltipEl.style.top     = canvasRect.top  + window.pageYOffset + tooltipModel.caretY + 'px';
               }
             },
-            legend: { labels:{color:themeColors.text}, position:'bottom' }
+            legend: { labels:{color:globalContext.themeColors.text}, position:'bottom' }
           }
         }
       });
     }
 
     function updateChart(slips) {
-      allSlips = slips;
+      globalContext.allSlips = slips;
       const labels = slips.map(s=>s['Payslip Information']['Check Date']);
       const earnings = slips.map(s=> s['Earnings'].reduce((a,b)=>a+(b.Amount||0),0));
       const benefits = slips.map(s=> (s['Employer Paid Benefits']||[]).reduce((a,b)=>a+(b.Amount||0),0));
@@ -436,14 +440,14 @@
       const preD = slips.map(s=> (s['Current and YTD Totals']||[]).reduce((a,b)=>a+(b.Description === 'Current' ? b['Pre Tax Deductions'] : 0),0));
       const postD = slips.map(s=> (s['Current and YTD Totals']||[]).reduce((a,b)=>a+(b.Description === 'Current' ? b['Post Tax Deductions'] : 0),0));
       const ded = preD.map((v,i)=>v+postD[i]);
-      paymentChart.data.labels = labels;
-      paymentChart.data.datasets = [
-        { label:'Net Pay', data: earnings.map((v,i)=>v-ded[i]-taxes[i]+Math.min(benefits[i],0)), backgroundColor:themeColors.green, stack:'s1' },
-        { label:'Employer Paid Benefits', data: benefits.map(v=>Math.max(v,0)), backgroundColor:themeColors.blue, stack:'s1' },
-        { label:'Deductions', data: ded.map(v=>Math.max(v,0)), backgroundColor:themeColors.yellow, stack:'s1' },
-        { label:'Taxes', data: taxes.map(v=>Math.max(v,0)), backgroundColor:themeColors.red, stack:'s1' }
+      globalContext.paymentChart.data.labels = labels;
+      globalContext.paymentChart.data.datasets = [
+        { label:'Net Pay', data: earnings.map((v,i)=>v-ded[i]-taxes[i]+Math.min(benefits[i],0)), backgroundColor:globalContext.themeColors.green, stack:'s1' },
+        { label:'Employer Paid Benefits', data: benefits.map(v=>Math.max(v,0)), backgroundColor:globalContext.themeColors.blue, stack:'s1' },
+        { label:'Deductions', data: ded.map(v=>Math.max(v,0)), backgroundColor:globalContext.themeColors.yellow, stack:'s1' },
+        { label:'Taxes', data: taxes.map(v=>Math.max(v,0)), backgroundColor:globalContext.themeColors.red, stack:'s1' }
       ];
-      paymentChart.update();
+      globalContext.paymentChart.update();
     }
 
     function computeAggregates(slipsForYear) {
