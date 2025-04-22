@@ -131,13 +131,7 @@
       justify-content: space-between;
     }
 
-    #loading p {
-      margin-bottom: 1rem;
-      font-weight: 400;
-      color: var(--subtext);
-    }
-
-    #dropZone, #loading {
+    #dropZone {
       position: fixed;
       top: 0; left: 0;
       width: 100vw; height: 100vh;
@@ -161,7 +155,7 @@
       color: var(--text);
     }
 
-    #dropZone h1, #loading h1 {
+    #dropZone h1 {
       font-size: 2rem;
       font-weight: 600;
       color: var(--text);
@@ -186,13 +180,7 @@
     <h1>Workday Payslip Analyzer</h1>
   </header>
 
-  <div id="loading">
-    <h1>Workday Payslip Analyzer</h1>
-    <p>Getting things ready. Hang tight while we load the analyzer!</p>
-    <span class="spinner">🤑</span>
-  </div>
-
-  <div id="dropZone" style="display:none">
+  <div id="dropZone">
     <div style="padding-bottom:2em">
       <h1>Workday Payslip Analyzer</h1>
         <p>Data is processed privately inside of your browser and is never transmitted.</p>
@@ -758,13 +746,7 @@
       renderBreakdowns(computeAggregates(payslips));
     }
 
-    function finishLoading() {
-      document.getElementById('loading').remove();
-      document.getElementById('dropZone').style = "";
-      initDropZone();
-    }
-
-    finishLoading();
+    initDropZone();
   </script>
 </body>
 </html>
