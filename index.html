@@ -52,18 +52,6 @@
       color: var(--text);
     }
 
-    .spinner {
-      text-align: center;
-      font-size: 3rem;
-      animation: spin 1s linear infinite;
-      padding-top: 0.25em;
-    }
-
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-
     .file-label {
       display: inline-block;
       margin-top: 1.5rem;
@@ -173,11 +161,32 @@
       border-color: var(--blue);
       color: var(--text);
     }
+
+    #exportJsonBtn {
+      display: none;
+      background-color: var(--surface1);
+      color: var(--text);
+      border: 1px solid var(--surface2);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.1s ease;
+      margin: 1rem auto 0;
+    }
+
+    #exportJsonBtn:hover {
+      background-color: var(--surface2);
+      transform: translateY(-1px);
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Workday Payslip Analyzer</h1>
+    <button id="exportJsonBtn" style="display:none;">Export Payslips As JSON</button>
   </header>
 
   <div id="dropZone">
@@ -328,6 +337,7 @@
     async function handleFiles(files) {
       document.getElementById('dropZone').style.display='none';
       document.getElementById('onloadWrapper').style.display='block';
+      document.getElementById('exportJsonBtn').style.display='block';
 
       const slips = [];
       for(const f of files){
@@ -368,6 +378,21 @@
       yearSelector.addEventListener('change', () => updateForYear(yearSelector.value));
       yearSelector.value = 'all';
       updateForYear('all');
+    }
+
+    function initJsonExporter() {
+      document.getElementById('exportJsonBtn').addEventListener('click', () => {
+        const data = JSON.stringify({ Payslips: appState.payslips }, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'payslips.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
     }
 
     function initDropZone() {
@@ -746,6 +771,7 @@
       renderBreakdowns(computeAggregates(payslips));
     }
 
+    initJsonExporter();
     initDropZone();
   </script>
 </body>
