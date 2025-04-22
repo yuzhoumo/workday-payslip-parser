@@ -7,6 +7,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤑</text></svg>">
   <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root {
       --base: #1e1e2e;
@@ -222,6 +223,109 @@
   </div>
 
   <script>
+    const SINGLE = 'SINGLE';
+    const GRID = 'GRID';
+
+    const SECTIONS = {
+      'Company Information': SINGLE,
+      'Payslip Information': SINGLE,
+      'Current and YTD Totals': GRID,
+      'Earnings': GRID,
+      'Employee Taxes': GRID,
+      'Pre Tax Deductions': GRID,
+      'Post Tax Deductions': GRID,
+      'Employer Paid Benefits': GRID,
+      'Taxable Wages': GRID,
+      'Withholding': GRID,
+      'Payment Information': GRID,
+    };
+
+    function getCellValue(ws, row, col) {
+      const cellRef = XLSX.utils.encode_cell({ r: row - 1, c: col - 1 });
+      const cell = ws[cellRef];
+      return cell ? cell.v : undefined;
+    }
+
+    function parseTableSingleRow(ws, startRow, result) {
+      const keyPrefix = getCellValue(ws, startRow, 1);
+      const labelRow = startRow + 1;
+      const dataRow = startRow + 2;
+      let col = 1;
+      result[keyPrefix] = {};
+
+      while (getCellValue(ws, labelRow, col)) {
+        const keySuffix = getCellValue(ws, labelRow, col);
+        const val = getCellValue(ws, dataRow, col);
+        result[keyPrefix][keySuffix] = val;
+        col++;
+      }
+    }
+
+    function parseTableGrid(ws, startRow, result, maxRow) {
+      const keyPrefix = getCellValue(ws, startRow, 1);
+      const labelRow = startRow + 1;
+      let dataRow = startRow + 2;
+      result[keyPrefix] = [];
+
+      while (dataRow <= maxRow && !SECTIONS[getCellValue(ws, dataRow, 1)]) {
+        const description = getCellValue(ws, dataRow, 1);
+        let col = 2;
+        const rowObj = { Description: description };
+
+        while (getCellValue(ws, labelRow, col)) {
+          const keySuffix = getCellValue(ws, labelRow, col);
+          const val = getCellValue(ws, dataRow, col);
+          rowObj[keySuffix] = val;
+          col++;
+        }
+
+        result[keyPrefix].push(rowObj);
+        dataRow++;
+      }
+    }
+
+    function parsePayslipToJson(input) {
+      return new Promise((resolve, reject) => {
+        const process = (data) => {
+          try {
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const ws = workbook.Sheets[sheetName];
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            const maxRow = range.e.r + 1;
+            const result = {};
+
+            for (let row = 1; row <= maxRow; row++) {
+              const cellVal = getCellValue(ws, row, 1);
+              const secType = SECTIONS[cellVal];
+              if (secType === SINGLE) {
+                parseTableSingleRow(ws, row, result);
+              } else if (secType === GRID) {
+                parseTableGrid(ws, row, result, maxRow);
+              }
+            }
+
+            resolve(result);
+          } catch (err) {
+            reject(err);
+          }
+        };
+
+        if (input instanceof ArrayBuffer) {
+          process(input);
+        } else if (input instanceof File) {
+          const reader = new FileReader();
+          reader.onload = (e) => process(e.target.result);
+          reader.onerror = reject;
+          reader.readAsArrayBuffer(input);
+        } else {
+          reject(new Error('Input must be a File or ArrayBuffer'));
+        }
+      });
+    }
+  </script>
+
+  <script>
     const appState = {
       pyodide: null,
       chart: null,
@@ -239,9 +343,8 @@
 
       const slips = [];
       for(const f of files){
-        const buf = await f.arrayBuffer();
-        const jsonStr = await window.js_parse(new Uint8Array(buf));
-        slips.push(JSON.parse(jsonStr));
+        const jsonStr = await parsePayslipToJson(f);
+        slips.push(jsonStr);
       }
 
       slips.sort((a,b)=> new Date(a['Payslip Information']['Check Date']) - new Date(b['Payslip Information']['Check Date']));
@@ -321,78 +424,6 @@
           .filter(f => f.name.toLowerCase().endsWith('.xlsx'));
         handleFiles(dropped);
       });
-    }
-
-    async function initPyodide() {
-      appState.pyodide = await loadPyodide();
-      await appState.pyodide.loadPackage('micropip');
-      await appState.pyodide.runPythonAsync(`
-          import micropip
-          await micropip.install('openpyxl')
-
-          import json, io
-          from datetime import datetime
-          from openpyxl import load_workbook
-
-          SINGLE, GRID = 'SINGLE', 'GRID'
-
-          SECTIONS = {
-              'Company Information': SINGLE,
-              'Payslip Information': SINGLE,
-              'Current and YTD Totals': GRID,
-              'Earnings': GRID,
-              'Employee Taxes': GRID,
-              'Pre Tax Deductions': GRID,
-              'Post Tax Deductions': GRID,
-              'Employer Paid Benefits': GRID,
-              'Taxable Wages': GRID,
-              'Withholding': GRID,
-              'Payment Information': GRID,
-          }
-
-          def parse_table_single_row(ws, start_row, output):
-              key_prefix = ws.cell(start_row,1).value
-              label_row = start_row+1; data_row=start_row+2; col=1
-              output[key_prefix] = {}
-              while ws.cell(label_row,col).value:
-                  key_suffix = ws.cell(label_row,col).value
-                  val = ws.cell(data_row,col).value
-                  col += 1
-                  output[key_prefix][key_suffix] = val
-
-          def parse_table_grid(ws, start_row, output):
-              key_prefix = ws.cell(start_row,1).value
-              label_row = start_row+1; data_row=start_row+2
-              output[key_prefix] = []
-              last_row = ws.max_row
-              while data_row<=last_row and ws.cell(data_row,1).value not in SECTIONS:
-                  col = 2; key_suffix_1 = ws.cell(data_row,1).value
-                  output[key_prefix].append({})
-                  while ws.cell(label_row,col).value:
-                      key_suffix_2 = ws.cell(label_row,col).value
-                      val = ws.cell(data_row,col).value
-                      col += 1
-                      output[key_prefix][-1]['Description'] = key_suffix_1
-                      output[key_prefix][-1][key_suffix_2] = val
-                  data_row += 1
-
-          def parse_payslip_to_json(file_bytes):
-              ws = load_workbook(io.BytesIO(file_bytes)).active
-              result = {}
-              for cell in ws['A']:
-                  sec = SECTIONS.get(cell.value)
-                  if sec == SINGLE: parse_table_single_row(ws, cell.row, result)
-                  elif sec == GRID: parse_table_grid(ws, cell.row, result)
-              return json.dumps(result)
-      `);
-
-      window.js_parse = async (file_bytes) => {
-        window.py_file_bytes = appState.pyodide.toPy(file_bytes);
-        return appState.pyodide.runPythonAsync(`
-            from js import py_file_bytes
-            parse_payslip_to_json(py_file_bytes)
-        `);
-      }
     }
 
     function renderChartTooltip(context) {
@@ -733,7 +764,7 @@
       initDropZone();
     }
 
-    initPyodide().then(finishLoading);
+    finishLoading();
   </script>
 </body>
 </html>
