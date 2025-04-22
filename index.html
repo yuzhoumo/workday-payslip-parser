@@ -207,14 +207,14 @@
 
   <div id="onloadWrapper" style="display:none">
     <div class="chart-container">
-      <canvas id="paymentChart"></canvas>
+      <canvas id="chartCanvas"></canvas>
     </div>
 
     <div id="chartjs-tooltip" style="opacity:0; position:absolute; pointer-events:none;"></div>
 
     <div class="breakdown-container" style="max-width:1000px; margin:2rem auto; color: var(--text);">
-      <label for="yearSelect" style="font-weight:500; margin-right:0.5rem;">Select Year:</label>
-      <select id="yearSelect" style="padding:0.5rem; border: none; border-radius:4px; background:var(--surface1); color:var(--text);">
+      <label for="yearSelector" style="font-weight:500; margin-right:0.5rem;">Select Year:</label>
+      <select id="yearSelector" style="padding:0.5rem; border: none; border-radius:4px; background:var(--surface1); color:var(--text);">
         <!-- options injected by JS -->
       </select>
       <div id="breakdownDetails" style="margin-top:1.5rem;"></div>
@@ -222,29 +222,111 @@
   </div>
 
   <script>
-    const globalContext = {
-      allSlips: [],
-      themeColors: null,
-      paymentChart: null,
+    const appState = {
       pyodide: null,
+      chart: null,
+      chartColors: null,
+      payslips: [],
     };
 
-    // Define global theme colors
-    const rootStyle = getComputedStyle(document.documentElement);
-    globalContext.themeColors = {
-      text:     rootStyle.getPropertyValue('--text').trim(),
-      subtext:  rootStyle.getPropertyValue('--subtext').trim(),
-      surface0: rootStyle.getPropertyValue('--surface0').trim(),
-      green:    rootStyle.getPropertyValue('--green').trim(),
-      blue:     rootStyle.getPropertyValue('--blue').trim(),
-      yellow:   rootStyle.getPropertyValue('--yellow').trim(),
-      red:      rootStyle.getPropertyValue('--red').trim(),
-    };
+    function moneyString(v) {
+      return `$${v.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+    }
 
-    async function initPyodideAndParser() {
-      globalContext.pyodide = await loadPyodide();
-      await globalContext.pyodide.loadPackage('micropip');
-      await globalContext.pyodide.runPythonAsync(`
+    async function handleFiles(files) {
+      document.getElementById('dropZone').style.display='none';
+      document.getElementById('onloadWrapper').style.display='block';
+
+      const slips = [];
+      for(const f of files){
+        const buf = await f.arrayBuffer();
+        const jsonStr = await window.js_parse(new Uint8Array(buf));
+        slips.push(JSON.parse(jsonStr));
+      }
+
+      slips.sort((a,b)=> new Date(a['Payslip Information']['Check Date']) - new Date(b['Payslip Information']['Check Date']));
+
+      initChart();
+      updateChart(slips);
+
+      // 1) extract all years from your slips
+      const years = Array.from(new Set(
+        slips.map(s => {
+          // assumes Check Date is MM/DD/YYYY
+          const parts = s['Payslip Information']['Check Date'].split('/');
+          return parts[2];
+        })
+      )).sort();
+
+      // 2) populate the dropdown
+      const yearSelector = document.getElementById('yearSelector');
+
+      // create and append the “All Time” option
+      const optAll = document.createElement('option');
+      optAll.value = 'all';
+      optAll.textContent = 'All Time';
+      yearSelector.appendChild(optAll);
+
+      years.forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        yearSelector.appendChild(opt);
+      });
+
+      yearSelector.addEventListener('change', () => updateForYear(yearSelector.value));
+      yearSelector.value = 'all';
+      updateForYear('all');
+    }
+
+    function initDropZone() {
+      document.getElementById('excelUpload').addEventListener('change', async e=>{
+        const files = Array.from(e.target.files);
+        if(!files.length) return;
+        handleFiles(files);
+      });
+
+      const dropZone = document.getElementById('dropZone');
+      const fileInput = document.getElementById('excelUpload');
+
+      // Show visual feedback on drag
+      window.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+
+      window.addEventListener("dragleave", (e) => {
+        // Only remove if dragging leaves the whole window
+        if (e.clientX === 0 && e.clientY === 0) {
+          dropZone.classList.remove("dragover");
+        }
+      });
+
+      dropZone.addEventListener('click', () => fileInput.click());
+
+      dropZone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      });
+
+      dropZone.addEventListener('dragleave', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+      });
+
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const dropped = Array.from(e.dataTransfer.files)
+          .filter(f => f.name.toLowerCase().endsWith('.xlsx'));
+        handleFiles(dropped);
+      });
+    }
+
+    async function initPyodide() {
+      appState.pyodide = await loadPyodide();
+      await appState.pyodide.loadPackage('micropip');
+      await appState.pyodide.runPythonAsync(`
           import micropip
           await micropip.install('openpyxl')
 
@@ -305,152 +387,224 @@
       `);
 
       window.js_parse = async (file_bytes) => {
-        window.py_file_bytes = globalContext.pyodide.toPy(file_bytes);
-        return globalContext.pyodide.runPythonAsync(`
+        window.py_file_bytes = appState.pyodide.toPy(file_bytes);
+        return appState.pyodide.runPythonAsync(`
             from js import py_file_bytes
             parse_payslip_to_json(py_file_bytes)
         `);
       }
     }
 
-    function initChart(slips) {
-      if (globalContext.paymentChart) globalContext.paymentChart.destroy();
-      globalContext.allSlips = slips;
-      const ctx = document.getElementById('paymentChart');
-      globalContext.paymentChart = new Chart(ctx, {
-        type: 'bar', data: { labels: [], datasets: [] }, options: {
-          responsive: true, maintainAspectRatio: false,
+    function renderChartTooltip(context) {
+      // Tooltip Element
+      const tooltipEl = document.getElementById('chartjs-tooltip');
+      const tooltipModel = context.tooltip;
+
+      // Hide if no tooltip
+      if (tooltipModel.opacity === 0) {
+        tooltipEl.style.opacity = 0;
+        return;
+      }
+
+      // Set caret position classes (top/bottom)
+      tooltipEl.classList.remove('above','below','no-transform');
+      if (tooltipModel.yAlign) {
+        tooltipEl.classList.add(tooltipModel.yAlign);
+      } else {
+        tooltipEl.classList.add('no-transform');
+      }
+
+      // Build the HTML
+      let html = '';
+
+      // **1) Title (the Check Date)**
+      tooltipModel.title.forEach(function(title) {
+        html += `<div class="title">Payslip - ${title}</div>`;
+      });
+
+      const begin = appState.payslips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
+      const end = appState.payslips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
+      html += `
+        <div class="breakdown-item" style="margin-bottom:1em">
+          <span><em>${begin} - ${end}</em></span>
+        </div>
+      `;
+
+      // **2) Main value line (dataset label + value)**
+      tooltipModel.dataPoints.forEach(dp => {
+        const label = dp.dataset.label;
+        const val   = dp.raw;
+        const total = context.chart.data.datasets
+          .reduce((sum, ds) => sum + (ds.data[dp.dataIndex] || 0), 0);
+        const pct = ((val / total) * 100).toFixed(1);
+        html += `
+          <div class="breakdown-item">
+            <span style="padding-right:10px"><b>Gross</b></span>
+            <span>${moneyString(total)}</span>
+          </div>
+          <div class="breakdown-item">
+            <span style="padding-right:10px"><b>${label}</b></span>
+            <span>${moneyString(val)} (${pct}%)</span>
+          </div>
+        `;
+      });
+
+      // **3) Breakdown section**
+      // Find which bar we’re on:
+      const idx   = tooltipModel.dataPoints[0].dataIndex;
+      const label = tooltipModel.dataPoints[0].dataset.label;
+      const slip  = appState.payslips[idx];
+
+      // Pick the right array:
+      let items = [];
+      if (label === 'Net Pay') {
+        items = slip['Earnings'] || [];
+      } else if (label === 'Employer Paid Benefits') {
+        items = slip['Employer Paid Benefits'] || [];
+      } else if (label === 'Deductions') {
+        items = [
+          ...(slip['Pre Tax Deductions']  || []),
+          ...(slip['Post Tax Deductions'] || [])
+        ];
+      } else if (label === 'Taxes') {
+        items = slip['Employee Taxes'] || [];
+      }
+
+      if (items.length) {
+        html += `<div class="section-title">${label} Breakdown</div>`;
+        items.forEach(item => {
+          if (item.Amount !== undefined && item.Amount !== null) {
+            html += `
+              <div class="breakdown-item">
+              <span style="padding-right: 10px">${item.Description.substring(0, 30)}</span>
+              <span>${moneyString(item.Amount)}</span>
+              </div>
+            `;
+          }
+        });
+      }
+
+      tooltipEl.innerHTML = html;
+
+      // **4) Position it**
+      const canvasRect = context.chart.canvas.getBoundingClientRect();
+      tooltipEl.style.opacity = 1;
+      tooltipEl.style.left    = canvasRect.left + window.pageXOffset + tooltipModel.caretX + 'px';
+      tooltipEl.style.top     = canvasRect.top  + window.pageYOffset + tooltipModel.caretY + 'px';
+    }
+
+    function updateChart(slips) {
+      appState.payslips = slips;
+
+      const labels     = slips.map(s => (s['Payslip Information']['Check Date'] || []));
+      const earnings   = slips.map(s => (s['Earnings'] || []).reduce((a, b) => a + (b.Amount || 0), 0));
+      const benefits   = slips.map(s => (s['Employer Paid Benefits'] || []).reduce((a, b) => a + (b.Amount || 0), 0));
+      const taxes      = slips.map(s => (s['Employee Taxes'] || []).reduce((a, b) => a + (b.Amount || 0), 0));
+      const preDeduct  = slips.map(s => (s['Current and YTD Totals'] || []).reduce((a, b) => a + (b.Description === 'Current' ? b['Pre Tax Deductions'] : 0), 0));
+      const postDeduct = slips.map(s => (s['Current and YTD Totals'] || []).reduce((a, b) => a + (b.Description === 'Current' ? b['Post Tax Deductions'] : 0), 0));
+      const deductions = preDeduct.map((v, i) => v + postDeduct[i]);
+
+      appState.chart.data.labels = labels;
+      appState.chart.data.datasets = [
+        {
+          label:'Net Pay',
+          data: earnings.map((v, i) => v - deductions[i] - taxes[i] + Math.min(benefits[i], 0)),
+          backgroundColor: appState.chartColors.green,
+          stack:'s1'
+        },
+        {
+          label:'Employer Paid Benefits',
+          data: benefits.map(v => Math.max(v, 0)),
+          backgroundColor: appState.chartColors.blue,
+          stack:'s1'
+        },
+        {
+          label:'Deductions',
+          data: deductions.map(v => Math.max(v, 0)),
+          backgroundColor: appState.chartColors.yellow,
+          stack:'s1'
+        },
+        {
+          label:'Taxes',
+          data: taxes.map(v => Math.max(v, 0)),
+          backgroundColor: appState.chartColors.red,
+          stack:'s1'
+        }
+      ];
+
+      appState.chart.update();
+    }
+
+    function initChart() {
+      if (appState.chart) {
+        appState.chart.destroy();
+      }
+
+      const rootStyle = getComputedStyle(document.documentElement);
+      appState.chartColors = {
+        text:     rootStyle.getPropertyValue('--text').trim(),
+        subtext:  rootStyle.getPropertyValue('--subtext').trim(),
+        surface0: rootStyle.getPropertyValue('--surface0').trim(),
+        green:    rootStyle.getPropertyValue('--green').trim(),
+        blue:     rootStyle.getPropertyValue('--blue').trim(),
+        yellow:   rootStyle.getPropertyValue('--yellow').trim(),
+        red:      rootStyle.getPropertyValue('--red').trim(),
+      };
+
+      appState.chart = new Chart(document.getElementById('chartCanvas'), {
+        type: 'bar',
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
           scales: {
-            x: { stacked: true, title: { display: true, text: 'Check Date', color: globalContext.themeColors.subtext }, ticks: { color: globalContext.themeColors.text, maxRotation:45 } , grid:{color: globalContext.themeColors.surface0} },
-            y: { stacked: true, title: { display: true, text: 'Amount (USD)', color: globalContext.themeColors.subtext }, ticks:{color: globalContext.themeColors.text, callback: v=> '$'+v.toLocaleString(undefined,{minimumFractionDigits:2})}, grid:{color: globalContext.themeColors.surface0} }
+            x: {
+              stacked: true,
+              title: {
+                display: true,
+                text: 'Check Date',
+                color: appState.chartColors.subtext,
+              },
+              ticks: {
+                color: appState.chartColors.text,
+                maxRotation:45,
+              },
+              grid: {
+                color: appState.chartColors.surface0,
+              },
+            },
+            y: {
+              stacked: true,
+              title: {
+                display: true,
+                text: 'Amount (USD)',
+                color: appState.chartColors.subtext,
+              },
+              ticks: {
+                color: appState.chartColors.text,
+                callback: moneyString,
+              },
+              grid: {
+                color: appState.chartColors.surface0,
+              },
+            },
           },
           plugins: {
             tooltip: {
               enabled: false,
-              external: function (context) {
-                // Tooltip Element
-                const tooltipEl = document.getElementById('chartjs-tooltip');
-                const tooltipModel = context.tooltip;
-
-                // Hide if no tooltip
-                if (tooltipModel.opacity === 0) {
-                  tooltipEl.style.opacity = 0;
-                  return;
-                }
-
-                // Set caret position classes (top/bottom)
-                tooltipEl.classList.remove('above','below','no-transform');
-                if (tooltipModel.yAlign) {
-                  tooltipEl.classList.add(tooltipModel.yAlign);
-                } else {
-                  tooltipEl.classList.add('no-transform');
-                }
-
-                // Build the HTML
-                let html = '';
-
-                // **1) Title (the Check Date)**
-                tooltipModel.title.forEach(function(title) {
-                  html += `<div class="title">Payslip - ${title}</div>`;
-                });
-
-                const begin = globalContext.allSlips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period Begin']
-                const end = globalContext.allSlips[tooltipModel.dataPoints[0].dataIndex]['Payslip Information']['Pay Period End']
-                html += `
-                  <div class="breakdown-item" style="margin-bottom:1em">
-                    <span><em>${begin} - ${end}</em></span>
-                  </div>
-                `;
-
-                // **2) Main value line (dataset label + value)**
-                tooltipModel.dataPoints.forEach(dp => {
-                  const label = dp.dataset.label;
-                  const val   = dp.raw;
-                  const total = context.chart.data.datasets
-                    .reduce((sum, ds) => sum + (ds.data[dp.dataIndex] || 0), 0);
-                  const pct = ((val / total) * 100).toFixed(1);
-                  html += `
-                    <div class="breakdown-item">
-                      <span style="padding-right:10px"><b>Gross</b></span>
-                      <span>$${total.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                    </div>
-                    <div class="breakdown-item">
-                      <span style="padding-right:10px"><b>${label}</b></span>
-                      <span>$${val.toLocaleString(undefined, {minimumFractionDigits: 2})} (${pct}%)</span>
-                    </div>
-                  `;
-                });
-
-                // **3) Breakdown section**
-                // Find which bar we’re on:
-                const idx   = tooltipModel.dataPoints[0].dataIndex;
-                const label = tooltipModel.dataPoints[0].dataset.label;
-                const slip  = globalContext.allSlips[idx];
-
-                // Pick the right array:
-                let items = [];
-                if (label === 'Net Pay') {
-                  items = slip['Earnings'] || [];
-                } else if (label === 'Employer Paid Benefits') {
-                  items = slip['Employer Paid Benefits'] || [];
-                } else if (label === 'Deductions') {
-                  items = [
-                    ...(slip['Pre Tax Deductions']  || []),
-                    ...(slip['Post Tax Deductions'] || [])
-                  ];
-                } else if (label === 'Taxes') {
-                  items = slip['Employee Taxes'] || [];
-                }
-
-                if (items.length) {
-                  html += `<div class="section-title">${label} Breakdown</div>`;
-                  items.forEach(item => {
-                    if (item.Amount !== undefined && item.Amount !== null) {
-                      html += `
-                        <div class="breakdown-item">
-                        <span style="padding-right: 10px">${item.Description.substring(0, 30)}</span>
-                        <span>$${item.Amount.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
-                        </div>
-                      `;
-                    }
-                  });
-                }
-
-                tooltipEl.innerHTML = html;
-
-                // **4) Position it**
-                const canvasRect = context.chart.canvas.getBoundingClientRect();
-                tooltipEl.style.opacity = 1;
-                tooltipEl.style.left    = canvasRect.left + window.pageXOffset + tooltipModel.caretX + 'px';
-                tooltipEl.style.top     = canvasRect.top  + window.pageYOffset + tooltipModel.caretY + 'px';
-              }
+              external: renderChartTooltip,
             },
-            legend: { labels:{color:globalContext.themeColors.text}, position:'bottom' }
-          }
-        }
+            legend: {
+              labels: {
+                color: appState.chartColors.text,
+              },
+              position: 'bottom',
+            },
+          },
+        },
       });
     }
 
-    function updateChart(slips) {
-      globalContext.allSlips = slips;
-      const labels = slips.map(s=>s['Payslip Information']['Check Date']);
-      const earnings = slips.map(s=> s['Earnings'].reduce((a,b)=>a+(b.Amount||0),0));
-      const benefits = slips.map(s=> (s['Employer Paid Benefits']||[]).reduce((a,b)=>a+(b.Amount||0),0));
-      const taxes = slips.map(s=> s['Employee Taxes'].reduce((a,b)=>a+(b.Amount||0),0));
-      const preD = slips.map(s=> (s['Current and YTD Totals']||[]).reduce((a,b)=>a+(b.Description === 'Current' ? b['Pre Tax Deductions'] : 0),0));
-      const postD = slips.map(s=> (s['Current and YTD Totals']||[]).reduce((a,b)=>a+(b.Description === 'Current' ? b['Post Tax Deductions'] : 0),0));
-      const ded = preD.map((v,i)=>v+postD[i]);
-      globalContext.paymentChart.data.labels = labels;
-      globalContext.paymentChart.data.datasets = [
-        { label:'Net Pay', data: earnings.map((v,i)=>v-ded[i]-taxes[i]+Math.min(benefits[i],0)), backgroundColor:globalContext.themeColors.green, stack:'s1' },
-        { label:'Employer Paid Benefits', data: benefits.map(v=>Math.max(v,0)), backgroundColor:globalContext.themeColors.blue, stack:'s1' },
-        { label:'Deductions', data: ded.map(v=>Math.max(v,0)), backgroundColor:globalContext.themeColors.yellow, stack:'s1' },
-        { label:'Taxes', data: taxes.map(v=>Math.max(v,0)), backgroundColor:globalContext.themeColors.red, stack:'s1' }
-      ];
-      globalContext.paymentChart.update();
-    }
-
-    function computeAggregates(slipsForYear) {
+    function computeAggregates(slips) {
       const sections = {
         'Earnings': s => s['Earnings'] || [],
         'Employer Paid Benefits': s => s['Employer Paid Benefits'] || [],
@@ -461,14 +615,15 @@
 
       const result = {};
 
-      // assume slipsForYear is already in chronological order by Check Date
-      slipsForYear.sort((a, b) => new Date(a['Payslip Information']['Check Date']) - new Date(b['Payslip Information']['Check Date']));
+      slips.sort((a, b) => (
+        new Date(a['Payslip Information']['Check Date']) - new Date(b['Payslip Information']['Check Date'])
+      ));
 
-      for (const [secName, getter] of Object.entries(sections)) {
+      for (const [sectionName, getter] of Object.entries(sections)) {
         // temp store: { [description]: { sum: Number, lastYtd: Number|null } }
         const temp = {};
 
-        slipsForYear.forEach(slip => {
+        slips.forEach(slip => {
           const items = getter(slip);
           items.forEach(item => {
             const desc = item.Description;
@@ -489,7 +644,7 @@
           });
         });
 
-        // build final map: prefer sum if >0, else fallback to lastYtd
+        // build final map: prefer sum if > 0, else fallback to lastYtd
         const finalMap = {};
         Object.entries(temp).forEach(([desc, { sum, lastYtd }]) => {
           const value = (sum > 0)
@@ -498,13 +653,13 @@
           finalMap[desc] = value;
         });
 
-        result[secName] = finalMap;
+        result[sectionName] = finalMap;
       }
 
       return result;
     }
 
-    function renderBreakdown(aggregates) {
+    function renderBreakdowns(aggregates) {
       const container = document.getElementById('breakdownDetails');
       container.innerHTML = '';  // clear previous
       for (const [secName, aggMap] of Object.entries(aggregates)) {
@@ -539,7 +694,7 @@
               .map(([desc, total]) =>
                 `<tr>
                    <td style="padding:4px;">${desc}</td>
-                   <td style="padding:4px; text-align:right;">$${total.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                   <td style="padding:4px; text-align:right;">${moneyString(total)}</td>
                  </tr>`
               ).join('')}
           </tbody>
@@ -550,8 +705,7 @@
         sectionTotal.innerHTML = `
           <tr style="padding-top:25px">
             <td style="padding:4px;"><b>Section Total</b></td>
-            <td style="padding:4px;
-            text-align:right"><em>$${Object.entries(aggMap).reduce((sum, x) => sum + x[1], 0).toLocaleString(undefined, {minimumFractionDigits:2})}</em></td>
+            <td style="padding:4px;text-align:right"><em>${moneyString(Object.entries(aggMap).reduce((sum, x) => sum + x[1], 0))}</em></td>
           </tr>
         `;
         table.appendChild(sectionTotal);
@@ -560,115 +714,26 @@
       }
     }
 
-    async function handleFiles(files) {
-      document.getElementById('dropZone').style.display='none';
-      document.getElementById('onloadWrapper').style.display='block';
-      const slips = [];
-      for(const f of files){
-        const buf = await f.arrayBuffer();
-        const jsonStr = await window.js_parse(new Uint8Array(buf));
-        slips.push(JSON.parse(jsonStr));
+    function updateForYear(year) {
+      let payslips = appState.payslips;
+
+      if (year !== 'all') {
+        payslips = payslips.filter(s =>
+          s['Payslip Information']['Check Date'].endsWith('/' + year)
+        );
       }
 
-      slips.sort((a,b)=> new Date(a['Payslip Information']['Check Date']) - new Date(b['Payslip Information']['Check Date']));
-
-      initChart(slips);
-
-      // 1) extract all years from your slips
-      const years = Array.from(new Set(
-        slips.map(s => {
-          // assumes Check Date is MM/DD/YYYY
-          const parts = s['Payslip Information']['Check Date'].split('/');
-          return parts[2];
-        })
-      )).sort();
-
-      // 2) populate the dropdown
-      const yearSelect = document.getElementById('yearSelect');
-
-      // create and append the “All Time” option
-      const optAll = document.createElement('option');
-      optAll.value = 'all';
-      optAll.textContent = 'All Time';
-      yearSelect.appendChild(optAll);
-
-      years.forEach(y => {
-        const opt = document.createElement('option');
-        opt.value = y;
-        opt.textContent = y;
-        yearSelect.appendChild(opt);
-      });
-
-      function updateForYear(year) {
-        let slipsForYear;
-        if (year === 'all') {
-          // use every slip
-          slipsForYear = slips;
-        } else {
-          // filter by Check Date ending in "/YYYY"
-          slipsForYear = slips.filter(s =>
-            s['Payslip Information']['Check Date'].endsWith('/' + year)
-          );
-        }
-
-        // now compute and render exactly as before
-        updateChart(slipsForYear);
-        const aggs = computeAggregates(slipsForYear);
-        renderBreakdown(aggs);
-      }
-
-      yearSelect.addEventListener('change', () => updateForYear(yearSelect.value));
-      yearSelect.value = 'all';
-      updateForYear('all');
+      updateChart(payslips);
+      renderBreakdowns(computeAggregates(payslips));
     }
 
-    function initCallback() {
+    function finishLoading() {
       document.getElementById('loading').remove();
       document.getElementById('dropZone').style = "";
-      document.getElementById('excelUpload').addEventListener('change', async e=>{
-        const files = Array.from(e.target.files);
-        if(!files.length) return;
-        handleFiles(files);
-      });
-
-      const dropZone = document.getElementById('dropZone');
-      const fileInput = document.getElementById('excelUpload');
-
-      // Show visual feedback on drag
-      window.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropZone.classList.add("dragover");
-      });
-
-      window.addEventListener("dragleave", (e) => {
-        // Only remove if dragging leaves the whole window
-        if (e.clientX === 0 && e.clientY === 0) {
-          dropZone.classList.remove("dragover");
-        }
-      });
-
-      dropZone.addEventListener('click', () => fileInput.click());
-
-      dropZone.addEventListener('dragover', e => {
-        e.preventDefault();
-        dropZone.classList.add('dragover');
-      });
-
-      dropZone.addEventListener('dragleave', e => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-      });
-
-      dropZone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        const dropped = Array.from(e.dataTransfer.files)
-          .filter(f => f.name.toLowerCase().endsWith('.xlsx'));
-        handleFiles(dropped);
-      });
+      initDropZone();
     }
 
-    initPyodideAndParser().then(initCallback);
+    initPyodide().then(finishLoading);
   </script>
 </body>
 </html>
