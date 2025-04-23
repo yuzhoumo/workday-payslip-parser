@@ -185,6 +185,9 @@
 <body>
   <header>
     <h1>Workday Payslip Analyzer</h1>
+    <p style="margin-top:1em">
+      JSON and CSV exported from this tool can be drag-and-dropped back in.
+    </p>
     <button id="exportJsonBtn">Export JSON</button>
     <button id="exportCsvBtn" style="margin-left:1em">Export CSV</button>
   </header>
@@ -198,7 +201,7 @@
         </p>
     </div>
     <div>
-      <span style="font-weight:500; color:var(--text)">Drag &amp; drop Excel payslip files here<br>or click to select</span>
+      <span style="font-weight:500; color:var(--text)">Drag &amp; drop Workday payslips (.xlsx) here<br>or click to select.</span>
       <input type="file" id="excelUpload" multiple accept=".xlsx,.json,.csv" style="display:none" />
     </div>
   </div>
