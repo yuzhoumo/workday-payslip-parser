@@ -13,8 +13,9 @@ For convenience, I've also created a web tool:
 
 - Drag-and-Drop Web Tool: [payslips.joemo.dev](https://payslips.joemo.dev)
 
-All file processing happens locally. The web tool is a sing self-contained
-`index.html` file that can be found on the `gh-pages` branch.
+All file processing happens locally. The web tool is a single self-contained
+`index.html` file that can be found on the `gh-pages` branch. The source for
+this tool is in `/web`.
 
 ## Script Usage
 
