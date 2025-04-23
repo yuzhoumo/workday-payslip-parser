@@ -9,16 +9,12 @@ automatically download all of your payslips.
 
 ## Web Usage
 
-For convenience, I've created a drag-and-drop web dashboard, along with a
-web version of the script available here:
+For convenience, I've also created a web tool:
 
-- Drag-and-Drop Dashboard: [payslips.joemo.dev](https://payslips.joemo.dev)
-- Web Converter: [payslips.joemo.dev/converter](https://payslips.joemo.dev/converter)
+- Drag-and-Drop Web Tool: [payslips.joemo.dev](https://payslips.joemo.dev)
 
-These are static webpages with the python scripts embedded as WASM using
-Pyodide, so all file processing happens locally. The [source code for these
-pages](https://github.com/yuzhoumo/workday-payslip-parser/tree/gh-pages) are
-on the `gh-pages` branch.
+All file processing happens locally. The web tool is a sing self-contained
+`index.html` file that can be found on the `gh-pages` branch.
 
 ## Script Usage
 

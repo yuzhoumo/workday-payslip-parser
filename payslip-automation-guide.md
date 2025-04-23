@@ -1,14 +1,13 @@
 # Guide: Automatically Download All Your Workday Payslips
 
-1. Navigate to your company's Workday website and navigate to your payslips.
+1. Go to your company's Workday website and navigate to your payslips list.
 2. Click the "View" button on your **most recent** payslip.
-3. Open the Chrome dev console (`fn+f12` on mac, `f12` on windows).
-4. Paste the folllowing javscript into the console and hit enter.
+3. Open the dev console (`fn+f12` on mac, `f12` on windows).
+4. **Allow popups** in your browser, otherwise the downloads will be blocked.
+5. Paste the folllowing javscript into the console and hit enter.
 
-NOTE - Please make sure you read and understand what this script does!! It
-is a very bad idea to paste scripts into your browser from strangers without
-reading them, and I don't want to encourage that 🙃. I've commented each step
-to make it clear:
+Please read this script before running it! It is a bad idea to paste scripts
+into your browser from strangers without reading them first 🙃.
 
 ```javascript
 (async function downloadAllPayslips() {
