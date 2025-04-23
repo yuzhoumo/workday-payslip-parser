@@ -8,6 +8,7 @@
   <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <style>
     :root {
       --base: #1e1e2e;
@@ -162,14 +163,13 @@
       color: var(--text);
     }
 
-    #exportJsonBtn {
-      display: none;
+    #exportJsonBtn, #exportCsvBtn {
       background-color: var(--surface1);
       color: var(--text);
       border: 1px solid var(--surface2);
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
       border-radius: 8px;
-      padding: 0.5rem 1rem;
+      padding: 0.25rem 0.5rem;
       font-size: 0.9rem;
       font-weight: 500;
       cursor: pointer;
@@ -177,7 +177,7 @@
       margin: 1rem auto 0;
     }
 
-    #exportJsonBtn:hover {
+    #exportJsonBtn:hover, #exportCsvBtn:hover {
       background-color: var(--surface2);
       transform: translateY(-1px);
     }
@@ -186,7 +186,8 @@
 <body>
   <header>
     <h1>Workday Payslip Analyzer</h1>
-    <button id="exportJsonBtn" style="display:none;">Export Payslips As JSON</button>
+    <button id="exportJsonBtn">Export JSON</button>
+    <button id="exportCsvBtn" style="margin-left:1em">Export CSV</button>
   </header>
 
   <div id="dropZone">
@@ -199,7 +200,7 @@
     </div>
     <div>
       <span style="font-weight:500; color:var(--text)">Drag &amp; drop Excel payslip files here<br>or click to select</span>
-      <input type="file" id="excelUpload" multiple accept=".xlsx" style="display:none" />
+      <input type="file" id="excelUpload" multiple accept=".xlsx,.json,.csv" style="display:none" />
     </div>
   </div>
 
@@ -281,6 +282,81 @@
       }
     }
 
+    function flattenPayslip(slip) {
+      const flat = {};
+
+      for (const [section, body] of Object.entries(slip)) {
+        if (Array.isArray(body)) {
+          // GRID sections: one row per item
+          body.forEach(item => {
+            const desc = item.Description || '';
+            for (const [field, val] of Object.entries(item)) {
+              if (field === 'Description') continue;
+              const key = `${section} | ${desc} | ${field}`;
+              // make sure empty/null become empty string (so header still appears)
+              flat[key] = val == null ? '' : val;
+            }
+          });
+        } else {
+          // SINGLE sections: just key–value pairs
+          for (const [field, val] of Object.entries(body)) {
+            const key = `${section} | ${field}`;
+            flat[key] = val == null ? '' : val;
+          }
+        }
+      }
+
+      return flat;
+    }
+
+    function unflattenPayslip(row) {
+      const slip = {};
+
+      // first, figure out all the section names & initialize them
+      const sections = new Set(
+        Object.keys(row).map(k => k.split(' | ')[0])
+      );
+      for (const section of sections) {
+        // Company Info & Payslip Info are SINGLE; everything else GRID
+        if (section === 'Company Information' || section === 'Payslip Information') {
+          slip[section] = {};
+        } else {
+          slip[section] = [];
+        }
+      }
+
+      function parseValue(raw) {
+        return (!isNaN(raw) && raw.trim() !== '') ? +raw : raw;
+      }
+
+      // now populate
+      for (const [compound, raw] of Object.entries(row)) {
+        // raw === '' means blank cell → null
+        const val = raw === '' ? null : parseValue(raw);
+
+        const parts = compound.split(' | ');
+        if (parts.length === 2) {
+          // SINGLE: ["Section", "Field"]
+          const [section, field] = parts;
+          slip[section][field] = val;
+        }
+        else if (parts.length === 3) {
+          // GRID: ["Section", "Description", "Field"]
+          const [section, desc, field] = parts;
+          // find or create the item with this Description
+          let item = slip[section].find(it => it.Description === desc);
+          if (!item) {
+            item = { Description: desc };
+            slip[section].push(item);
+          }
+          item[field] = val;
+        }
+        // anything else (shouldn’t happen) ignored
+      }
+
+      return slip;
+    }
+
     function parsePayslipToJson(input) {
       return new Promise((resolve, reject) => {
         const process = (data) => {
@@ -338,6 +414,35 @@
         const a = document.createElement('a');
         a.href = url;
         a.download = 'payslips.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    function initCsvExporter() {
+      const btn = document.getElementById('exportCsvBtn');
+      btn.addEventListener('click', () => {
+        const flatRows = appState.payslips.map(flattenPayslip);
+
+        const headers = Array.from(
+          flatRows.reduce((set, row) => {
+            Object.keys(row).forEach(k => set.add(k));
+            return set;
+          }, new Set())
+        );
+
+        const csv = Papa.unparse({
+          fields: headers,
+          data:   flatRows
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'payslips.csv';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -409,13 +514,17 @@
     async function handleFiles(files) {
       const slips = [];
 
-      if (files.length > 1) {
+      if (files.length === 1 && files[0].name.toLowerCase().endsWith('.json')) {
+        slips.push(...(JSON.parse(await files[0].text())['Payslips'] || []));
+      } else if (files.length === 1 && files[0].name.toLowerCase().endsWith('.csv')) {
+        const text = await files[0].text();
+        const { data } = Papa.parse(text, { header: true });
+        data.forEach(row => slips.push(unflattenPayslip(row)));
+      } else if (files.length >= 1) {
         files = files.filter(f => f.name.toLowerCase().endsWith('.xlsx'));
         for (const f of files) {
           slips.push(await parsePayslipToJson(f));
         }
-      } else if (files.length === 1 && files[0].name.toLowerCase().endsWith('.json')) {
-        slips.push(...(JSON.parse(await files[0].text())['Payslips'] || []));
       }
 
       if (slips.length === 0) {
@@ -425,7 +534,6 @@
 
       document.getElementById('dropZone').style.display='none';
       document.getElementById('onloadWrapper').style.display='block';
-      document.getElementById('exportJsonBtn').style.display='block';
 
       slips.sort((a, b) => {
         const dateA = new Date(a['Payslip Information']['Check Date'])
@@ -785,6 +893,7 @@
     }
 
     initJsonExporter();
+    initCsvExporter();
     initDropZone();
   </script>
 </body>
