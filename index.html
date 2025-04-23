@@ -657,8 +657,6 @@
     }
 
     function updateChart(slips) {
-      appState.payslips = slips;
-
       const labels     = slips.map(s => (s['Payslip Information']['Check Date'] || []));
       const earnings   = slips.map(s => (s['Earnings'] || []).reduce((a, b) => a + (b.Amount || 0), 0));
       const benefits   = slips.map(s => (s['Employer Paid Benefits'] || []).reduce((a, b) => a + (b.Amount || 0), 0));
