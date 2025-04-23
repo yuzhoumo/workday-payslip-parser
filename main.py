@@ -69,7 +69,7 @@ def parse_table_single_row(ws: Worksheet, start_row: Any, output: dict,
         if fmt == OutputFormat.JSON:
             output[key_prefix][key_suffix] = val
         else:
-            key = f'{key_prefix} - {key_suffix}'
+            key = f'{key_prefix} | {key_suffix}'
             output[key] = val
 
 
@@ -117,7 +117,7 @@ def parse_table_grid(ws: Worksheet, start_row: Any, output: dict,
                 output[key_prefix][-1]['Description'] = key_suffix_1
                 output[key_prefix][-1][key_suffix_2] = val
             else:
-                key = f'{key_prefix} - {key_suffix_1} - {key_suffix_2}'
+                key = f'{key_prefix} | {key_suffix_1} | {key_suffix_2}'
                 output[key] = val
         data_row += 1
 
