@@ -13,9 +13,10 @@ For convenience, I've also created a web tool:
 
 - Drag-and-Drop Web Tool: [payslips.joemo.dev](https://payslips.joemo.dev)
 
-All file processing happens locally. The web tool is a single self-contained
-`index.html` file that can be found on the `gh-pages` branch. The source for
-this tool is in `/web`.
+All file processing happens locally and can be opened offline as well. The web
+tool is a single self-contained `index.html` file that can be downloaded from
+[releases](https://github.com/yuzhoumo/workday-payslip-parser/releases/latest).
+The source code for this tool is in `/web`.
 
 ## Script Usage
 
