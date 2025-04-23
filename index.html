@@ -330,56 +330,6 @@
       payslips: [],
     };
 
-    function moneyString(v) {
-      return `$${v.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-    }
-
-    async function handleFiles(files) {
-      document.getElementById('dropZone').style.display='none';
-      document.getElementById('onloadWrapper').style.display='block';
-      document.getElementById('exportJsonBtn').style.display='block';
-
-      const slips = [];
-      for(const f of files){
-        const jsonStr = await parsePayslipToJson(f);
-        slips.push(jsonStr);
-      }
-
-      slips.sort((a,b)=> new Date(a['Payslip Information']['Check Date']) - new Date(b['Payslip Information']['Check Date']));
-
-      initChart();
-      updateChart(slips);
-
-      // 1) extract all years from your slips
-      const years = Array.from(new Set(
-        slips.map(s => {
-          // assumes Check Date is MM/DD/YYYY
-          const parts = s['Payslip Information']['Check Date'].split('/');
-          return parts[2];
-        })
-      )).sort();
-
-      // 2) populate the dropdown
-      const yearSelector = document.getElementById('yearSelector');
-
-      // create and append the “All Time” option
-      const optAll = document.createElement('option');
-      optAll.value = 'all';
-      optAll.textContent = 'All Time';
-      yearSelector.appendChild(optAll);
-
-      years.forEach(y => {
-        const opt = document.createElement('option');
-        opt.value = y;
-        opt.textContent = y;
-        yearSelector.appendChild(opt);
-      });
-
-      yearSelector.addEventListener('change', () => updateForYear(yearSelector.value));
-      yearSelector.value = 'all';
-      updateForYear('all');
-    }
-
     function initJsonExporter() {
       document.getElementById('exportJsonBtn').addEventListener('click', () => {
         const data = JSON.stringify({ Payslips: appState.payslips }, null, 2);
@@ -433,10 +383,73 @@
       dropZone.addEventListener('drop', e => {
         e.preventDefault();
         dropZone.classList.remove('dragover');
-        const dropped = Array.from(e.dataTransfer.files)
-          .filter(f => f.name.toLowerCase().endsWith('.xlsx'));
-        handleFiles(dropped);
+        handleFiles(Array.from(e.dataTransfer.files));
       });
+    }
+
+    function initYearSelector(years) {
+      const yearSelector = document.getElementById('yearSelector');
+
+      const optAll = document.createElement('option');
+      optAll.value = 'all';
+      optAll.textContent = 'All Time';
+      yearSelector.appendChild(optAll);
+
+      years.forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        yearSelector.appendChild(opt);
+      });
+
+      yearSelector.addEventListener('change', () => updateForYear(yearSelector.value));
+      yearSelector.value = 'all';
+    }
+
+    async function handleFiles(files) {
+      const slips = [];
+
+      if (files.length > 1) {
+        files = files.filter(f => f.name.toLowerCase().endsWith('.xlsx'));
+        for (const f of files) {
+          slips.push(await parsePayslipToJson(f));
+        }
+      } else if (files.length === 1 && files[0].name.toLowerCase().endsWith('.json')) {
+        slips.push(...(JSON.parse(await files[0].text())['Payslips'] || []));
+      }
+
+      if (slips.length === 0) {
+        alert("Unable to parse file(s) because the format was invalid.");
+        return;
+      }
+
+      document.getElementById('dropZone').style.display='none';
+      document.getElementById('onloadWrapper').style.display='block';
+      document.getElementById('exportJsonBtn').style.display='block';
+
+      slips.sort((a, b) => {
+        const dateA = new Date(a['Payslip Information']['Check Date'])
+        const dateB = new Date(b['Payslip Information']['Check Date'])
+        return dateA - dateB;
+      });
+
+      appState.payslips = slips;
+
+      initChart();
+      updateForYear('all');
+
+      const years = Array.from(new Set(
+        slips.map(s => {
+          const parts = s['Payslip Information']['Check Date'].split('/');
+          return parts[2];
+        })
+      )).sort();
+
+      initYearSelector(years);
+    }
+
+    function moneyString(v) {
+      return `$${v.toLocaleString(undefined, {minimumFractionDigits:2})}`;
     }
 
     function renderChartTooltip(context) {
